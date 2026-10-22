@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexora Stay — Hotel Front Desk</title>
+
+<!-- PWA: installable app metadata -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#153629">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nexora Stay">
+<meta name="mobile-web-app-capable" content="yes">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ============ PREFLIGHT (pure ES5 — must run on any browser ever made) ============ -->
+<div id="preflight-status" style="position:fixed;inset:0;background:#153629;color:#fff;display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-size:15px;text-align:center;padding:24px;z-index:999999;">
+  Loading Nexora Stay&hellip;
+</div>
+<script>
+(function () {
+  var el = document.getElementById('preflight-status');
+  function fail(msg) {
+    if (!el) { return; }
+    el.innerHTML = '<div style="max-width:440px;"><div style="font-weight:bold;font-size:17px;margin-bottom:12px;">Nexora Stay could not start</div><div style="font-size:13.5px;line-height:1.6;">' + msg + '</div></div>';
+  }
+  try {
+    var supportsLet = false, supportsArrow = false, supportsTemplate = false, supportsClass = false;
+    try { eval('var __t1=1; let __x1=1;'); supportsLet = true; } catch (e1) {}
+    try { eval('var __f1 = (function(){ return (x) => x; })();'); supportsArrow = true; } catch (e2) {}
+    try { eval('var __s1 = `test`;'); supportsTemplate = true; } catch (e3) {}
+    try { eval('class __C1 {}'); supportsClass = true; } catch (e4) {}
+    var supportsPromise = (typeof window.Promise !== 'undefined');
+    var supportsFetch = (typeof window.fetch !== 'undefined');
+
+    if (!supportsLet || !supportsArrow || !supportsTemplate || !supportsClass || !supportsPromise || !supportsFetch) {
+      fail(
+        'This browser is too old for Nexora Stay to run (it\'s missing modern JavaScript features the app needs).<br><br>' +
+        'Please open this file in a recent version of Chrome, Edge, Firefox, or Safari instead \u2014 or update this browser to its latest version.<br><br>' +
+        'Missing: ' + [
+          !supportsLet ? 'let/const' : null,
+          !supportsArrow ? 'arrow functions' : null,
+          !supportsTemplate ? 'template literals' : null,
+          !supportsClass ? 'classes' : null,
+          !supportsPromise ? 'Promise' : null,
+          !supportsFetch ? 'fetch' : null
+        ].join(', ').replace(/^,\s*|,\s*$/g, '').replace(/null,?\s*/g, '')
+      );
+    } else {
+      window.__nexoraPreflightOk = true;
+      window.__nexoraPreflightTimeout = window.setTimeout(function () {
+        fail(
+          'The app\'s scripts loaded, but something stopped it from finishing startup.<br><br>' +
+          'Please try reloading this page. If it keeps happening, open your browser\'s developer tools (usually F12), click the "Console" tab, and share any red error text you see there \u2014 that will tell us exactly what to fix.'
+        );
+      }, 6000);
+    }
+  } catch (eAny) {
+    fail('An unexpected error occurred while starting the app. Please try reloading, or try a different browser.');
+  }
+})();
+</script>
+
+<!-- ============ LOCK SCREEN ============ -->
+<div id="lock-screen" class="lock-screen">
+  <div class="lock-card">
+    <div class="lock-mark">NS</div>
+    <h1>Nexora Stay</h1>
+    <p class="lock-sub">Front desk access</p>
+    <form id="lock-form">
+      <input type="text" id="lock-pin" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="Enter your PIN" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" required>
+      <button type="submit">Sign in</button>
+    </form>
+    <p class="lock-hint" id="lock-hint"></p>
+    <p class="lock-note">Each staff member signs in with their own PIN. Ask your administrator if you don't have one yet. Default admin PIN is <strong>1234</strong> until changed.</p>
+  </div>
+</div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app" class="app hidden">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">NS</span>
+      <div>
+        <div class="brand-name" id="brand-hotel-name">Nexora Stay</div>
+        <div class="brand-sub">Front Desk</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="dashboard"><span class="nav-ico">◧</span>Dashboard</button>
+      <button class="nav-btn" data-view="bookings"><span class="nav-ico">▤</span>Bookings</button>
+      <button class="nav-btn" data-view="rooms"><span class="nav-ico">▦</span>Rooms</button>
+      <button class="nav-btn" data-view="guests"><span class="nav-ico">◐</span>Guests</button>
+      <button class="nav-btn" data-view="billing"><span class="nav-ico">▧</span>Billing</button>
+      <button class="nav-btn hidden" data-view="reports" id="nav-reports"><span class="nav-ico">◫</span>Reports</button>
+      <button class="nav-btn hidden" data-view="payroll" id="nav-payroll"><span class="nav-ico">◒</span>Payroll</button>
+      <button class="nav-btn hidden" data-view="spending" id="nav-spending"><span class="nav-ico">◑</span>Spending</button>
+      <button class="nav-btn" data-view="settings"><span class="nav-ico">◈</span>Settings</button>
+    </nav>
+    <div class="session-info">
+      <span class="sync-dot" id="sync-dot"></span><span id="sync-label">Offline only</span>
+      <div style="margin-top:6px;"><span class="session-name" id="session-name">—</span><br>
+      <span class="session-role" id="session-role">—</span></div>
+      <button class="lock-btn hidden" id="btn-install-app">Install app</button>
+      <button class="lock-btn" id="btn-lock">Lock screen</button>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="hamburger" id="btn-hamburger">☰</button>
+      <div class="topbar-title" id="view-title">Dashboard</div>
+      <div class="topbar-date" id="topbar-date"></div>
+      <button class="btn btn-accent" id="btn-new-booking">+ New booking</button>
+    </header>
+    <div id="global-alerts" class="no-print"></div>
+
+    <!-- ===== DASHBOARD ===== -->
+    <section class="view active" id="view-dashboard">
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-label">Occupied tonight</div>
+          <div class="stat-value" id="stat-occupied">0 / 0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Arriving today</div>
+          <div class="stat-value" id="stat-arrivals">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Departing today</div>
+          <div class="stat-value" id="stat-departures">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Rooms in maintenance</div>
+          <div class="stat-value" id="stat-maintenance">0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Room board</h2>
+          <div class="legend">
+            <span><i class="dot dot-available"></i>Available</span>
+            <span><i class="dot dot-occupied"></i>Occupied</span>
+            <span><i class="dot dot-reserved"></i>Reserved</span>
+            <span><i class="dot dot-maintenance"></i>Maintenance</span>
+          </div>
+        </div>
+        <div class="room-grid" id="room-board"></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-head"><h2>Today's arrivals</h2></div>
+          <div class="table-wrap"><table class="table" id="table-arrivals"><thead>
+            <tr><th>Guest</th><th>Room</th><th>Stay</th><th></th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>Today's departures</h2></div>
+          <div class="table-wrap"><table class="table" id="table-departures"><thead>
+            <tr><th>Guest</th><th>Room</th><th>Balance</th><th></th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== BOOKINGS ===== -->
+    <section class="view" id="view-bookings">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>All bookings</h2>
+          <div class="filter-row">
+            <input type="search" id="booking-search" placeholder="Search guest or room...">
+            <select id="booking-filter-status">
+              <option value="">All statuses</option>
+              <option value="reserved">Reserved</option>
+              <option value="checked-in">Checked in</option>
+              <option value="checked-out">Checked out</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-ghost" id="btn-export-bookings">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="table" id="table-bookings"><thead>
+          <tr><th>Guest</th><th>Room</th><th>Stay</th><th>Check-in</th><th>Check-out</th><th>Status</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===== ROOMS ===== -->
+    <section class="view" id="view-rooms">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Rooms</h2>
+          <button class="btn btn-accent" id="btn-new-room">+ Add room</button>
+        </div>
+        <div class="table-wrap"><table class="table" id="table-rooms"><thead>
+          <tr><th>Room</th><th>Type</th><th>Rate / night</th><th>Status</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Room types &amp; rates</h2>
+          <button class="btn btn-ghost" id="btn-new-type">+ Add type</button>
+        </div>
+        <div class="table-wrap"><table class="table" id="table-room-types"><thead>
+          <tr><th>Type</th><th>Full night</th><th>1 Hour</th><th>3 Hours</th><th>All night</th><th>Capacity</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===== GUESTS ===== -->
+    <section class="view" id="view-guests">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Guest directory</h2>
+          <div class="filter-row">
+            <input type="search" id="guest-search" placeholder="Search guests...">
+            <button class="btn btn-ghost" id="btn-export-guests">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-wrap"><table class="table" id="table-guests"><thead>
+          <tr><th>Name</th><th>Phone</th><th>ID number</th><th>Stays</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===== BILLING ===== -->
+    <section class="view" id="view-billing">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Invoices</h2>
+          <div class="filter-row">
+            <select id="billing-filter-status">
+              <option value="">All</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="partial">Partially paid</option>
+              <option value="paid">Paid</option>
+              <option value="void">Void</option>
+            </select>
+            <select id="billing-filter-period">
+              <option value="alltime">All Time</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <input type="date" id="billing-filter-date" class="hidden">
+            <button class="btn btn-ghost" id="btn-export-invoices">Export CSV</button>
+          </div>
+        </div>
+        <p class="hint-text hidden" id="billing-filter-summary"></p>
+        <div class="table-wrap"><table class="table" id="table-invoices"><thead>
+          <tr><th>Invoice #</th><th>Date</th><th>Guest</th><th>Room</th><th>Total</th><th>Balance</th><th>Status</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===== REPORTS ===== -->
+    <section class="view" id="view-reports">
+      <div class="panel no-print">
+        <div class="panel-head">
+          <h2>Sales &amp; spending report</h2>
+          <div class="filter-row">
+            <select id="report-period">
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+              <option value="alltime">All Time</option>
+            </select>
+            <input type="date" id="report-date">
+            <button class="btn btn-ghost" id="btn-report-today">Today</button>
+            <button class="btn btn-ghost" id="btn-export-report">Export CSV</button>
+            <button class="btn btn-ghost" id="btn-print-report">Print</button>
+          </div>
+        </div>
+        <p class="hint-text" id="report-range-label"></p>
+        <p class="hint-text">Net cash position = revenue minus expenses, payroll, and anything deposited to the bank in this period.</p>
+      </div>
+
+      <div class="print-area" id="reports-print-area">
+        <div class="print-letterhead" id="reports-print-header"></div>
+
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Revenue collected</div>
+            <div class="stat-value" id="rpt-revenue">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Expenses</div>
+            <div class="stat-value" id="rpt-expenses">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Payroll paid</div>
+            <div class="stat-value" id="rpt-payroll">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Net cash position</div>
+            <div class="stat-value" id="rpt-net">0</div>
+          </div>
+        </div>
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Payments recorded</div>
+            <div class="stat-value" id="rpt-payment-count">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Check-ins</div>
+            <div class="stat-value" id="rpt-checkins">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Check-outs</div>
+            <div class="stat-value" id="rpt-checkouts">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Deposited to bank</div>
+            <div class="stat-value" id="rpt-deposited">0</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head"><h2>By payment method</h2></div>
+            <div class="table-wrap"><table class="table" id="table-report-methods"><thead>
+              <tr><th>Method</th><th>Payments</th><th>Amount</th></tr>
+            </thead><tbody></tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Room occupancy</h2></div>
+            <div class="table-wrap"><table class="table" id="table-report-occupancy"><thead>
+              <tr><th>Room</th><th>Guest</th><th>Stay</th></tr>
+            </thead><tbody></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head"><h2>Expenses in this period</h2></div>
+            <div class="table-wrap"><table class="table" id="table-report-expenses"><thead>
+              <tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr>
+            </thead><tbody></tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><h2>Salary payments in this period</h2></div>
+            <div class="table-wrap"><table class="table" id="table-report-salary"><thead>
+              <tr><th>Date</th><th>Employee</th><th>Month</th><th>Amount</th></tr>
+            </thead><tbody></tbody></table></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>Payments in this period</h2></div>
+          <div class="table-wrap"><table class="table" id="table-report-payments"><thead>
+            <tr><th>Invoice #</th><th>Guest</th><th>Room</th><th>Method</th><th>Amount</th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2 id="report-trend-title">Trend</h2></div>
+          <div class="table-wrap"><table class="table" id="table-report-trend"><thead>
+            <tr><th>Period</th><th>Revenue</th><th>Expenses</th><th>Payroll</th><th>Net</th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== PAYROLL ===== -->
+    <section class="view" id="view-payroll">
+      <div class="stat-row">
+        <div class="stat-card">
+          <div class="stat-label">Active employees</div>
+          <div class="stat-value" id="pr-active-count">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total monthly payroll</div>
+          <div class="stat-value" id="pr-monthly-total">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Paid all time</div>
+          <div class="stat-value" id="pr-paid-alltime">0</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Staff directory</h2>
+          <div>
+            <button class="btn btn-ghost" id="btn-export-employees">Export CSV</button>
+            <button class="btn btn-accent" id="btn-new-employee">+ Add employee</button>
+          </div>
+        </div>
+        <p class="hint-text">This is your payroll roster — cleaners, cooks, security and anyone else on salary, whether or not they have a PIN login to this app. It's separate from Settings → Staff accounts, which controls who can sign in.</p>
+        <div class="table-wrap"><table class="table" id="table-employees"><thead>
+          <tr><th>Name</th><th>Role</th><th>Phone</th><th>Monthly salary</th><th>Status</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Recent salary payments</h2><button class="btn btn-ghost" id="btn-export-salary-payments">Export CSV</button></div>
+        <div class="table-wrap"><table class="table" id="table-salary-payments"><thead>
+          <tr><th>Employee</th><th>Month</th><th>Due</th><th>Paid</th><th>Method</th><th>Date</th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+    </section>
+
+    <!-- ===== SPENDING ===== -->
+    <section class="view" id="view-spending">
+      <div class="panel no-print hidden" id="expense-recovery" style="border-color:var(--occupied);"></div>
+      <div class="panel no-print">
+        <div class="panel-head">
+          <h2>Spending</h2>
+          <button class="btn btn-ghost" id="btn-print-spending">Print</button>
+        </div>
+      </div>
+
+      <div class="print-area" id="spending-print-area">
+        <div class="print-letterhead" id="spending-print-header"></div>
+
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Total expenses (all time)</div>
+            <div class="stat-value" id="sp-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Records</div>
+            <div class="stat-value" id="sp-count">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">This month</div>
+            <div class="stat-value" id="sp-month-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Deposited (all time)</div>
+            <div class="stat-value" id="sp-deposited-total">0</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Expense records</h2>
+            <div class="no-print">
+              <button class="btn btn-ghost" id="btn-export-expenses">Export CSV</button>
+              <button class="btn btn-accent" id="btn-new-expense">+ Record expense</button>
+            </div>
+          </div>
+          <div class="filter-row no-print">
+            <input type="search" id="expense-search" placeholder="Search description or vendor...">
+            <select id="expense-filter-category"><option value="">All categories</option></select>
+            <select id="expense-filter-period">
+              <option value="alltime">All Time</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+            <input type="date" id="expense-filter-date" class="hidden">
+          </div>
+          <p class="hint-text no-print hidden" id="expense-filter-summary"></p>
+          <div class="table-wrap"><table class="table" id="table-expenses"><thead>
+            <tr><th>Date</th><th>Description</th><th>Category</th><th>Vendor</th><th>Method</th><th>Amount</th><th class="no-print"></th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <h2>Cash / bank deposits</h2>
+            <div class="no-print">
+              <button class="btn btn-ghost" id="btn-export-deposits">Export CSV</button>
+              <button class="btn btn-accent" id="btn-new-deposit">+ Record deposit</button>
+            </div>
+          </div>
+          <p class="hint-text no-print">When cash is taken out of the till and deposited at the bank (or moved to mobile money), record it here — it's tracked separately from expenses since it isn't money spent, but it does reduce cash on hand and shows up as a deduction in Reports.</p>
+          <div class="table-wrap"><table class="table" id="table-deposits"><thead>
+            <tr><th>Date</th><th>Destination</th><th>Method</th><th>Note</th><th>Amount</th><th class="no-print"></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+      </div>
+    </section>
+
+    <!-- ===== SETTINGS ===== -->
+    <section class="view" id="view-settings">
+      <div class="panel" id="panel-hotel-details">
+        <div class="panel-head"><h2>Hotel details</h2></div>
+        <form id="form-hotel" class="form-grid">
+          <label>Hotel name<input type="text" id="set-hotel-name" required></label>
+          <label>Address<input type="text" id="set-hotel-address"></label>
+          <label>Phone<input type="text" id="set-hotel-phone"></label>
+          <label>Email address<input type="email" id="set-hotel-email" placeholder="frontdesk@yourhotel.com"></label>
+          <label>Taxpayer number (NIU)<input type="text" id="set-hotel-taxpayer" placeholder="M012345678901A"></label>
+          <label>Registration number (RCCM)<input type="text" id="set-hotel-registration" placeholder="RC/BUE/2024/A/1234"></label>
+          <label>Currency<input type="text" id="set-hotel-currency" maxlength="6"></label>
+          <label>VAT / tax rate (%)<input type="number" step="0.01" id="set-hotel-tax"></label>
+          <div class="form-actions"><button class="btn btn-accent" type="submit">Save details</button></div>
+        </form>
+      </div>
+
+      <div class="panel" id="panel-staff">
+        <div class="panel-head">
+          <h2>Staff accounts</h2>
+          <button class="btn btn-accent hidden" id="btn-new-staff">+ Add staff</button>
+        </div>
+        <p class="hint-text">Each staff member signs in with their own PIN, checked on this device. Admins have full control; Assistant Managers can see and do almost everything but can't delete, void, cancel, manage staff, or change cloud sync; front-desk staff can take bookings and handle billing.</p>
+        <div class="table-wrap"><table class="table" id="table-staff"><thead>
+          <tr><th>Name</th><th>Role</th><th>Status</th><th></th></tr>
+        </thead><tbody></tbody></table></div>
+      </div>
+
+      <div class="panel hidden" id="panel-non-admin-note">
+        <p class="admin-only-note">Hotel details, Reports, Payroll and Spending can only be seen by an administrator or assistant manager. Staff accounts and cloud sync can only be changed by an administrator.</p>
+      </div>
+
+      <div class="panel" id="panel-sync">
+        <div class="panel-head"><h2>Cloud sync</h2></div>
+        <p class="hint-text">Optional. This app works fully offline on its own — nothing here is required. If you set up the small companion backend (see the README), this device will push its changes up and pull down changes from other devices whenever it has an internet connection, so the hotel owner can see live activity from anywhere.</p>
+        <p class="hint-text" id="sync-status-text">Not set up.</p>
+        <p class="hint-text hidden" id="sync-assistant-note">Only an administrator can view or change the backend URL and sync key.</p>
+        <div id="sync-form-wrap">
+          <form id="form-sync" class="form-grid">
+            <label class="span-2">Backend URL<input type="text" id="sync-backend-url" placeholder="https://your-site-name.netlify.app/.netlify/functions"></label>
+            <p class="hint-text span-2" style="margin:-4px 0 0;">Your site's own address ending in <strong>/.netlify/functions</strong> — <strong>not</strong> the app.netlify.com dashboard link. If you paste the dashboard link by mistake, it will be corrected for you.</p>
+            <label class="span-2">Sync key<input type="password" id="sync-key-input" placeholder="the SYNC_KEY you set on the backend"></label>
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost" id="btn-sync-resend" title="Clears this device's sync markers and re-sends everything; the backend skips what it already has">Re-send all data</button>
+              <button type="button" class="btn btn-ghost" id="btn-sync-now">Sync now</button>
+              <button type="submit" class="btn btn-accent">Save &amp; test</button>
+            </div>
+          </form>
+          <p class="hint-text hidden" id="sync-test-result"></p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2>Data &amp; backup</h2></div>
+        <p class="hint-text">This device's data lives in this browser first and foremost. Export a backup regularly, especially before clearing browser data or switching computers — cloud sync (if set up) is a second copy, not a replacement for your own backups.</p>
+        <div class="form-actions">
+          <button class="btn btn-ghost" id="btn-export">Export backup (.json)</button>
+          <label class="btn btn-ghost file-btn hidden" id="btn-import-label">Import backup<input type="file" id="btn-import" accept="application/json" hidden></label>
+          <button class="btn btn-danger hidden" id="btn-reset">Reset all data</button>
+        </div>
+        <p class="hint-text" id="data-location-text" style="margin-top:14px;"></p>
+        <div id="recovery-copies"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ MODAL: STAFF ============ -->
+<div class="modal-overlay hidden" id="modal-staff">
+  <div class="modal">
+    <div class="modal-head"><h3 id="staff-modal-title">Add staff</h3><button class="modal-close" data-close="modal-staff">×</button></div>
+    <form id="form-staff">
+      <input type="hidden" id="sf-id">
+      <div class="form-grid">
+        <label>Full name<input type="text" id="sf-name" required></label>
+        <label>Role<select id="sf-role">
+          <option value="staff">Front desk staff</option>
+          <option value="assistant">Assistant Manager</option>
+          <option value="admin">Administrator</option>
+        </select></label>
+        <label>PIN (4–8 digits)<input type="text" inputmode="numeric" id="sf-pin"></label>
+        <label id="sf-active-label" class="hidden">Status<select id="sf-active">
+          <option value="true">Active</option>
+          <option value="false">Deactivated</option>
+        </select></label>
+      </div>
+      <p class="form-error" id="sf-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-staff">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: EMPLOYEE ============ -->
+<div class="modal-overlay hidden" id="modal-employee">
+  <div class="modal">
+    <div class="modal-head"><h3 id="employee-modal-title">Add employee</h3><button class="modal-close" data-close="modal-employee">×</button></div>
+    <form id="form-employee">
+      <input type="hidden" id="em-id">
+      <div class="form-grid">
+        <label class="span-2">Full name<input type="text" id="em-name" required></label>
+        <label>Role / position<input type="text" id="em-role" placeholder="e.g. Housekeeper" required></label>
+        <label>Phone<input type="text" id="em-phone" placeholder="6XX XXX XXX"></label>
+        <label>Monthly salary<input type="number" min="0" step="1" id="em-salary" required></label>
+        <label id="em-status-label" class="hidden">Status<select id="em-status">
+          <option value="active">Active</option>
+          <option value="left">Left / inactive</option>
+        </select></label>
+      </div>
+      <p class="form-error" id="em-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-employee">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save employee</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: SALARY PAYMENT ============ -->
+<div class="modal-overlay hidden" id="modal-salary-pay">
+  <div class="modal">
+    <div class="modal-head"><h3 id="salary-modal-title">Pay salary</h3><button class="modal-close" data-close="modal-salary-pay">×</button></div>
+    <form id="form-salary-pay">
+      <input type="hidden" id="sp-employee-id">
+      <div class="form-grid">
+        <label class="span-2">Month<input type="text" id="sp-month" placeholder="e.g. September 2026" required></label>
+        <label>Amount due<input type="number" min="0" step="1" id="sp-due" required></label>
+        <label>Amount paid<input type="number" min="0" step="1" id="sp-paid" required></label>
+        <label>Payment date<input type="date" id="sp-date" required></label>
+        <label>Method<select id="sp-method">
+          <option>Cash</option>
+          <option>MTN Mobile Money</option>
+          <option>Orange Money</option>
+          <option>Bank transfer</option>
+        </select></label>
+        <label class="span-2">Note (optional)<input type="text" id="sp-note" placeholder="e.g. Partial payment due to cashflow"></label>
+      </div>
+      <p class="form-error" id="sp-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-salary-pay">Cancel</button>
+        <button type="submit" class="btn btn-accent">Record payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: EXPENSE ============ -->
+<div class="modal-overlay hidden" id="modal-expense">
+  <div class="modal">
+    <div class="modal-head"><h3>Record expense</h3><button class="modal-close" data-close="modal-expense">×</button></div>
+    <form id="form-expense">
+      <div class="form-grid">
+        <label class="span-2">Description<input type="text" id="ex-desc" placeholder="e.g. Repair of room 201 AC unit" required></label>
+        <label>Category<select id="ex-category"></select></label>
+        <label>Amount<input type="number" min="0" step="1" id="ex-amount" required></label>
+        <label>Date<input type="date" id="ex-date" required></label>
+        <label>Payment method<select id="ex-method">
+          <option>Cash</option>
+          <option>MTN Mobile Money</option>
+          <option>Orange Money</option>
+          <option>Bank transfer</option>
+          <option>Card</option>
+        </select></label>
+        <label>Vendor / payee (optional)<input type="text" id="ex-vendor" placeholder="e.g. ABC Hardware"></label>
+      </div>
+      <p class="form-error" id="ex-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-expense">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save expense</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: EXPENSE VIEW (printable) ============ -->
+<div class="modal-overlay hidden" id="modal-expense-view">
+  <div class="modal">
+    <div class="modal-head no-print"><h3>Expense record</h3>
+      <div>
+        <button class="btn btn-ghost" id="btn-print-expense">Print</button>
+        <button class="modal-close" data-close="modal-expense-view">×</button>
+      </div>
+    </div>
+    <div id="expense-view-content" class="print-area"></div>
+  </div>
+</div>
+
+<!-- ============ MODAL: DEPOSIT ============ -->
+<div class="modal-overlay hidden" id="modal-deposit">
+  <div class="modal">
+    <div class="modal-head"><h3>Record cash / bank deposit</h3><button class="modal-close" data-close="modal-deposit">×</button></div>
+    <form id="form-deposit">
+      <div class="form-grid">
+        <label>Amount<input type="number" min="0" step="1" id="dp-amount" required></label>
+        <label>Date<input type="date" id="dp-date" required></label>
+        <label>Method<select id="dp-method">
+          <option>Cash</option>
+          <option>MTN Mobile Money</option>
+          <option>Orange Money</option>
+          <option>Bank transfer</option>
+        </select></label>
+        <label>Destination<input type="text" id="dp-destination" placeholder="e.g. Afriland First Bank"></label>
+        <label class="span-2">Note (optional)<input type="text" id="dp-note" placeholder="e.g. End-of-week cash drop"></label>
+      </div>
+      <p class="form-error" id="dp-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-deposit">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save deposit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: NEW / EDIT BOOKING ============ -->
+<div class="modal-overlay hidden" id="modal-booking">
+  <div class="modal">
+    <div class="modal-head"><h3 id="booking-modal-title">New booking</h3><button class="modal-close" data-close="modal-booking">×</button></div>
+    <form id="form-booking">
+      <input type="hidden" id="bk-id">
+      <div class="form-grid">
+        <label>Guest name<input type="text" id="bk-guest-name" required></label>
+        <label>Guest phone<input type="text" id="bk-guest-phone" required></label>
+        <label>ID / passport number (optional)<input type="text" id="bk-guest-idnum"></label>
+        <label>Room<select id="bk-room" required></select></label>
+        <label>Stay type<select id="bk-stay-type">
+          <option value="nightly">Full stay (by night)</option>
+          <option value="1hour">Short stay — 1 hour</option>
+          <option value="3hours">Short stay — 3 hours</option>
+          <option value="allnight">Short stay — all night</option>
+        </select></label>
+        <label>Guests<input type="number" id="bk-guests" min="1" value="1" required></label>
+        <label>Check-in<input type="datetime-local" id="bk-checkin" required></label>
+        <label id="bk-checkout-label">Check-out<input type="datetime-local" id="bk-checkout" required></label>
+        <label class="span-2">Notes<textarea id="bk-notes" rows="2"></textarea></label>
+      </div>
+      <p class="form-error" id="bk-error"></p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-booking">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save booking</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: ROOM ============ -->
+<div class="modal-overlay hidden" id="modal-room">
+  <div class="modal">
+    <div class="modal-head"><h3 id="room-modal-title">Add room</h3><button class="modal-close" data-close="modal-room">×</button></div>
+    <form id="form-room">
+      <input type="hidden" id="rm-id">
+      <div class="form-grid">
+        <label>Room number / name<input type="text" id="rm-number" required></label>
+        <label>Type<select id="rm-type" required></select></label>
+        <label>Status<select id="rm-status">
+          <option value="available">Available</option>
+          <option value="maintenance">Maintenance</option>
+        </select></label>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-room">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save room</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: ROOM TYPE ============ -->
+<div class="modal-overlay hidden" id="modal-type">
+  <div class="modal">
+    <div class="modal-head"><h3 id="type-modal-title">Add room type</h3><button class="modal-close" data-close="modal-type">×</button></div>
+    <form id="form-type">
+      <input type="hidden" id="tp-id">
+      <div class="form-grid">
+        <label>Type name<input type="text" id="tp-name" required></label>
+        <label>Capacity (guests)<input type="number" min="1" id="tp-capacity" required></label>
+        <label>Full night rate<input type="number" min="0" step="1" id="tp-rate" required></label>
+        <label>1 Hour rate (optional)<input type="number" min="0" step="1" id="tp-rate-1h" placeholder="0 = not offered"></label>
+        <label>3 Hour rate (optional)<input type="number" min="0" step="1" id="tp-rate-3h" placeholder="0 = not offered"></label>
+        <label>All-night rate (optional)<input type="number" min="0" step="1" id="tp-rate-night" placeholder="0 = not offered"></label>
+      </div>
+      <p class="hint-text">Leave a short-stay rate at 0 if this room type doesn't offer that option — it just won't show up as a choice when booking.</p>
+      <div class="form-actions">
+        <button type="button" class="btn btn-ghost" data-close="modal-type">Cancel</button>
+        <button type="submit" class="btn btn-accent">Save type</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: INVOICE ============ -->
+<div class="modal-overlay hidden" id="modal-invoice">
+  <div class="modal modal-wide">
+    <div class="modal-head no-print"><h3>Invoice</h3>
+      <div>
+        <button class="btn btn-ghost" id="btn-print-invoice">Print</button>
+        <button class="modal-close" data-close="modal-invoice">×</button>
+      </div>
+    </div>
+    <div id="invoice-content"></div>
+
+    <div class="no-print">
+      <p class="form-error" id="void-banner" style="display:none;"></p>
+
+      <div id="section-add-charge">
+        <div class="panel-head"><h4>Add charge</h4></div>
+        <form id="form-charge" class="charge-row">
+          <input type="text" id="ch-desc" placeholder="Description (e.g. Room service)" required>
+          <input type="number" id="ch-amount" placeholder="Amount" min="0" step="1" required>
+          <button type="submit" class="btn btn-ghost">Add</button>
+        </form>
+      </div>
+
+      <div id="discount-section" class="hidden">
+        <div class="panel-head"><h4>Discount <span class="admin-only-note">(admin only)</span></h4></div>
+        <form id="form-discount" class="charge-row">
+          <input type="number" id="disc-value" placeholder="Discount amount" min="0" step="1" required>
+          <input type="text" id="disc-note" placeholder="Reason (optional)">
+          <button type="submit" class="btn btn-ghost">Apply</button>
+        </form>
+        <p class="form-error" id="disc-error"></p>
+        <button type="button" class="link-btn hidden" id="btn-remove-discount">Remove discount</button>
+      </div>
+
+      <div id="section-record-payment">
+        <div class="panel-head"><h4>Record payment</h4></div>
+        <form id="form-payment" class="charge-row">
+          <input type="number" id="pay-amount" placeholder="Amount received" min="0" step="1" required>
+          <select id="pay-method">
+            <option>Cash</option>
+            <option>MTN Mobile Money</option>
+            <option>Orange Money</option>
+            <option>Bank transfer</option>
+            <option>Card</option>
+          </select>
+          <button type="submit" class="btn btn-accent">Record</button>
+        </form>
+      </div>
+
+      <div id="void-section" class="hidden">
+        <div class="panel-head"><h4>Void this invoice <span class="admin-only-note">(admin only)</span></h4></div>
+        <p class="hint-text">Voiding removes this invoice's payments from revenue reports. It can't be undone — use it for a billing mistake, not to adjust a guest's stay (cancel the booking for that instead).</p>
+        <form id="form-void" class="charge-row">
+          <input type="text" id="void-reason" placeholder="Reason for voiding (required)" required>
+          <button type="submit" class="btn btn-danger">Void invoice</button>
+        </form>
+        <p class="form-error" id="void-error"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="js/app.js"></script>
+<script>
+/* PWA: service worker registration + custom install prompt.
+   Kept separate from app.js since it's install-plumbing, not app logic. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('service-worker.js').catch(function (err) {
+      console.error('Service worker registration failed', err);
+    });
+  });
+}
+(function () {
+  var deferredInstallPrompt = null;
+  var installBtn = document.getElementById('btn-install-app');
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installBtn) installBtn.classList.remove('hidden');
+  });
+  if (installBtn) {
+    installBtn.addEventListener('click', function () {
+      if (!deferredInstallPrompt) return;
+      deferredInstallPrompt.prompt();
+      deferredInstallPrompt.userChoice.finally(function () {
+        deferredInstallPrompt = null;
+        installBtn.classList.add('hidden');
+      });
+    });
+  }
+  window.addEventListener('appinstalled', function () {
+    if (installBtn) installBtn.classList.add('hidden');
+  });
+})();
+/* A window that keeps running an OLD version after an update is risky (old versions
+   could overwrite newer data from another window), so ask people to reload. Nothing
+   is lost by reloading — every change is already saved. */
+if ('serviceWorker' in navigator) {
+  var hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!hadController) { hadController = true; return; } // first install: nothing to reload
+    if (document.getElementById('update-bar')) return;
+    var bar = document.createElement('div');
+    bar.id = 'update-bar';
+    bar.innerHTML = 'A new version of Nexora Stay is ready. <button type="button" id="btn-update-reload">Reload now</button>';
+    document.body.appendChild(bar);
+    document.getElementById('btn-update-reload').addEventListener('click', function () { location.reload(); });
+  });
+}
+</script>
+</body>
+</html>

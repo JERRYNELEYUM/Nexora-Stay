@@ -1,0 +1,13 @@
+{
+  "name": "nexora-stay-sync",
+  "version": "1.2.0",
+  "description": "Optional cloud sync backend for the Nexora Stay offline-first hotel app",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "playwright": "^1.62.1"
+  },
+  "scripts": {
+    "test": "node test/run.js && node test/run_report.js && node test/run_sync_hardening.js && node test/run_datasafety.js"
+  }
+}
