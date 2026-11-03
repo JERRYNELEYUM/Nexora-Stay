@@ -1332,6 +1332,7 @@ function migrateState(parsed) {
   if (!parsed.salaryPayments) parsed.salaryPayments = [];
   if (!parsed.expenseCategories) parsed.expenseCategories = ['Utilities', 'Maintenance & Repairs', 'Supplies', 'Laundry', 'Transport', 'Food & Beverage', 'Administration', 'Marketing', 'Other'];
   if (!parsed.expenses) parsed.expenses = [];
+  parsed.expenses.forEach(stampExpenseCreated); // older records predate createdAt — fix their place in the list once
   if (!parsed.deposits) parsed.deposits = [];
   if (!parsed.counters) parsed.counters = { invoice: 1 };
   if (parsed.hotel) {
@@ -1507,6 +1508,25 @@ function refreshFromStorageIfStale() {
   if (state && stored && stored.data && (stored.data._rev || 0) > (state._rev || 0)) adoptStoredState(stored.raw);
 }
 
+/* ---- Expense ordering ---------------------------------------------------
+   Expense lists show records in the order they were recorded, newest on top.
+   The expense's own date can't do that: several expenses share a day, and an
+   expense can be backdated. So every expense carries createdAt (when it was
+   saved); records from before that field existed get their best-known stamp. */
+function stampExpenseCreated(ex) {
+  if (ex && !ex.createdAt) ex.createdAt = ex.updatedAt || (ex.date ? ex.date + 'T00:00:00.000Z' : new Date().toISOString());
+  return ex;
+}
+function expenseCreatedMs(ex) {
+  const t = Date.parse(ex.createdAt || ex.updatedAt || ex.date);
+  return Number.isNaN(t) ? 0 : t;
+}
+function byNewestExpense(a, b) {
+  return (expenseCreatedMs(b) - expenseCreatedMs(a)) ||
+    String(b.date || '').localeCompare(String(a.date || '')) ||
+    String(b.id || '').localeCompare(String(a.id || ''));
+}
+
 /* ---- Expense safety log ------------------------------------------------- */
 function readJournal() {
   try { return JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; } catch (e) { return []; }
@@ -1522,7 +1542,7 @@ function compactJournal(list) {
   return out;
 }
 function journalEntry(ex) {
-  return { a: 'add', id: ex.id, t: Date.now(), d: ex.date, c: ex.category, s: ex.description, n: ex.amount, m: ex.method, v: ex.vendor || '', r: ex.recordedBy || '' };
+  return { a: 'add', id: ex.id, t: Date.now(), d: ex.date, c: ex.category, s: ex.description, n: ex.amount, m: ex.method, v: ex.vendor || '', r: ex.recordedBy || '', k: ex.createdAt || '' };
 }
 function journalExpense(action, ex) {
   const list = readJournal();
@@ -1546,7 +1566,7 @@ function findMissingExpenses() {
 }
 function restoreMissingExpenses() {
   const missing = findMissingExpenses();
-  missing.forEach(x => state.expenses.push(touch({ id: x.id, date: x.d, category: x.c, description: x.s, amount: x.n, method: x.m, vendor: x.v, recordedBy: x.r, restored: true })));
+  missing.forEach(x => state.expenses.push(touch({ id: x.id, date: x.d, category: x.c, description: x.s, amount: x.n, method: x.m, vendor: x.v, recordedBy: x.r, createdAt: x.k || new Date(x.t || Date.now()).toISOString(), restored: true })));
   saveState();
   renderSpending();
   toast('Restored ' + missing.length + ' expense record' + (missing.length === 1 ? '' : 's') + '.');
@@ -2293,7 +2313,7 @@ function renderReports() {
   if (!data.expenses.length) {
     expBody.innerHTML = `<tr class="muted-row"><td colspan="4">No expenses in this period.</td></tr>`;
   } else {
-    data.expenses.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(ex => {
+    data.expenses.slice().sort(byNewestExpense).forEach(ex => {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${ex.date}</td><td>${escapeHtml(ex.description)}</td><td>${escapeHtml(ex.category)}</td><td>${formatMoney(ex.amount)}</td>`;
       expBody.appendChild(tr);
@@ -2558,7 +2578,7 @@ function renderExpenseTable() {
   const body = document.querySelector('#table-expenses tbody');
   body.innerHTML = '';
 
-  let list = state.expenses.slice().sort((a, b) => b.date.localeCompare(a.date));
+  let list = state.expenses.slice().sort(byNewestExpense); // newest recorded on top
   if (category) list = list.filter(e => e.category === category);
   if (range) list = list.filter(e => e.date >= range.from && e.date <= range.to);
   if (search) {
@@ -2668,6 +2688,7 @@ document.getElementById('form-expense').addEventListener('submit', (e) => {
 
   const recordedBy = currentStaffInfo ? currentStaffInfo.name : '';
   const newExpense = touch({ id: uid(), date, category, description, amount, method, vendor, recordedBy });
+  newExpense.createdAt = newExpense.updatedAt; // fixes its place in the list for good, even if it's edited later
   state.expenses.push(newExpense);
   saveState();
   journalExpense('add', newExpense);
@@ -3663,6 +3684,7 @@ function collectPending() {
   (state.expenses || []).filter(isPendingRec).forEach(ex => add('expenses', ex, {
     id: ex.id, date: ex.date, category: ex.category, description: ex.description, amount: ex.amount,
     method: ex.method, vendor: ex.vendor || '', recorded_by: ex.recordedBy || '', updated_at: ensureStamp(ex),
+    created_at: stampExpenseCreated(ex).createdAt,
   }));
   (state.deposits || []).filter(isPendingRec).forEach(d => add('deposits', d, {
     id: d.id, date: d.date, amount: d.amount, method: d.method, destination: d.destination || '', note: d.note || '',
@@ -3871,10 +3893,15 @@ function mergeServerState(server) {
     date: sr.date, method: sr.method, note: sr.note, updatedAt: sr.updated_at,
   }));
   state.expenses = state.expenses || [];
-  mergeArray(state.expenses, server.expenses, sr => ({
-    id: sr.id, date: sr.date, category: sr.category, description: sr.description, amount: sr.amount,
-    method: sr.method, vendor: sr.vendor, recordedBy: sr.recorded_by || '', updatedAt: sr.updated_at,
-  }));
+  mergeArray(state.expenses, server.expenses, sr => {
+    const ex = {
+      id: sr.id, date: sr.date, category: sr.category, description: sr.description, amount: sr.amount,
+      method: sr.method, vendor: sr.vendor, recordedBy: sr.recorded_by || '', updatedAt: sr.updated_at,
+    };
+    if (sr.created_at) ex.createdAt = sr.created_at; // an older backend without the column must not wipe ours
+    return ex;
+  });
+  state.expenses.forEach(stampExpenseCreated);
   state.deposits = state.deposits || [];
   mergeArray(state.deposits, server.deposits, sr => ({
     id: sr.id, date: sr.date, amount: sr.amount, method: sr.method, destination: sr.destination, note: sr.note, updatedAt: sr.updated_at,
@@ -4013,7 +4040,7 @@ function exportSalaryPaymentsCSV() {
 }
 function exportExpensesCSV() {
   const headers = ['Date', 'Description', 'Category', 'Vendor', 'Method', 'Amount', 'Recorded by'];
-  const rows = state.expenses.map(e => [e.date, e.description, e.category, e.vendor || '', e.method, e.amount, e.recordedBy || '']);
+  const rows = state.expenses.slice().sort(byNewestExpense).map(e => [e.date, e.description, e.category, e.vendor || '', e.method, e.amount, e.recordedBy || '']);
   downloadCSV(`expenses-${TODAY()}.csv`, headers, rows);
 }
 function exportDepositsCSV() {

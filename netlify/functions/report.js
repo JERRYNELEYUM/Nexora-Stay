@@ -126,7 +126,11 @@ exports.handler = async (event) => {
     payments: payments,
     occupied: occupied,
     expensesTotal: expensesTotal,
-    expenses: (expensesRes.data || []).map(e => ({ date: e.date, description: e.description, category: e.category, amount: e.amount })),
+    // newest recorded first (created_at; rows from before that column fall back to updated_at, then date)
+    expenses: (expensesRes.data || []).slice().sort((a, b) =>
+      ((Date.parse(b.created_at || b.updated_at) || 0) - (Date.parse(a.created_at || a.updated_at) || 0)) ||
+      String(b.date || '').localeCompare(String(a.date || ''))
+    ).map(e => ({ date: e.date, description: e.description, category: e.category, amount: e.amount })),
     payrollTotal: payrollTotal,
     salaryPayments: (salaryRes.data || []).map(p => ({ date: p.date, month: p.month, amount: p.amount_paid, employeeName: employeesById[p.employee_id] ? employeesById[p.employee_id].name : null })),
     depositedTotal: depositedTotal,

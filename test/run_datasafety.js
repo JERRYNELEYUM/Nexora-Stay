@@ -141,6 +141,29 @@ server.listen(Number(process.argv[3]) || 8961, async () => {
     { const ctx = await browser.newContext(); const P = await ctx.newPage(); await P.goto(URL); await unlock(P); await P.click('.nav-btn[data-view="settings"]'); await P.waitForTimeout(200);
       const txt = await P.$eval('#data-location-text', e => e.textContent);
       check('shows the address this copy lives at, its record counts, and warns about separate copies', /localhost:/.test(txt) && /expenses/.test(txt) && /separate copies/.test(txt), txt); }
+
+    console.log('\n[R7] ORDER — expenses are listed in the order they were recorded, newest on top');
+    { const ctx = await browser.newContext(); const P = await ctx.newPage(); await P.goto(URL); await unlock(P);
+      const order = () => P.$$eval('#table-expenses tbody tr:not(.muted-row) td:nth-child(2)', r => r.map(td => td.textContent));
+      const old = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+      await addExpense(P, 'FIRST-TODAY', 100); await addExpense(P, 'SECOND-TODAY', 200);
+      await addExpense(P, 'THIRD-BACKDATED', 300, old); await addExpense(P, 'FOURTH-TODAY', 400);
+      await goSpending(P);
+      const want = ['FOURTH-TODAY', 'THIRD-BACKDATED', 'SECOND-TODAY', 'FIRST-TODAY'];
+      check('several same-day expenses: the latest one is on top', JSON.stringify(await order()) === JSON.stringify(want), await order());
+      check('every new expense is stamped with when it was recorded', (await P.evaluate(() => state.expenses.every(e => !!e.createdAt))));
+      await P.reload(); await unlock(P); await goSpending(P);
+      check('the order survives a reload', JSON.stringify(await order()) === JSON.stringify(want), await order());
+      // records saved by an older version of the app have no createdAt: they still sort by when they were last saved
+      await P.evaluate((k) => { const d = JSON.parse(localStorage.getItem(k));
+        d.expenses.push({ id: 'legacy-a', date: '2026-01-05', category: 'Other', description: 'LEGACY-OLDER', amount: 1, method: 'Cash', updatedAt: '2026-01-05T08:00:00.000Z' });
+        d.expenses.push({ id: 'legacy-b', date: '2026-01-05', category: 'Other', description: 'LEGACY-NEWER', amount: 1, method: 'Cash', updatedAt: '2026-01-05T09:00:00.000Z' });
+        localStorage.setItem(k, JSON.stringify(d)); }, K);
+      await P.reload(); await unlock(P); await goSpending(P);
+      const all = await order();
+      check('older records without a creation stamp still fall into place below newer ones', JSON.stringify(all.slice(-2)) === JSON.stringify(['LEGACY-NEWER', 'LEGACY-OLDER']) && all[0] === 'FOURTH-TODAY', all);
+      const csvOrder = await P.evaluate(() => state.expenses.slice().sort(byNewestExpense).map(e => e.description));
+      check('the Reports and CSV ordering uses the same newest-first rule', csvOrder[0] === 'FOURTH-TODAY' && csvOrder[csvOrder.length - 1] === 'LEGACY-OLDER', csvOrder); }
   } catch (e) { bad++; console.log('  CRASHED:', e.message); }
   await browser.close(); server.close();
   console.log('\nDATA-SAFETY RESULT:', ok, 'passed,', bad, 'failed'); process.exit(bad ? 1 : 0);

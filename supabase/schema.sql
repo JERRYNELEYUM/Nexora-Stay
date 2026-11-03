@@ -185,9 +185,12 @@ create table if not exists expenses (
   method text not null default 'Cash',
   vendor text default '',
   recorded_by text default '',
+  created_at timestamptz,          -- when the expense was recorded; lists show newest first
   updated_at timestamptz not null default now()
 );
 alter table expenses add column if not exists recorded_by text default '';
+-- no default on purpose: existing rows must not all get "now" as their creation time
+alter table expenses add column if not exists created_at timestamptz;
 
 -- ---------- cash/bank deposits — money moved out of the till, tracked
 --            separately from expenses since it's a transfer, not a spend ----------
