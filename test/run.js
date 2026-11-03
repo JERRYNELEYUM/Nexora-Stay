@@ -109,7 +109,7 @@ async function main() {
   const expenseId = 'aaaaaaaa-0000-0000-0000-000000000008';
   const spendingPush = await push.handler(ev('POST', {
     tables: {
-      expenses: [{ id: expenseId, date: '2026-08-27', category: 'Maintenance & Repairs', description: 'AC repair room 201', amount: 15000, method: 'Cash', vendor: 'ABC Hardware', updated_at: t1 }],
+      expenses: [{ id: expenseId, date: '2026-08-27', category: 'Maintenance & Repairs', description: 'AC repair room 201', amount: 15000, method: 'Cash', vendor: 'ABC Hardware', created_at: t1, updated_at: t1 }],
     },
   }, 'test-sync-key'));
   const rs = JSON.parse(spendingPush.body);
@@ -121,6 +121,7 @@ async function main() {
   check('pulled employee matches', synced2.employees.length === 1 && synced2.employees[0].name === 'Grace Mballa', synced2.employees);
   check('pulled salary payment matches', synced2.salaryPayments.length === 1 && synced2.salaryPayments[0].amount_paid === 60000, synced2.salaryPayments);
   check('pulled expense matches', synced2.expenses.length === 1 && synced2.expenses[0].amount === 15000, synced2.expenses);
+  check('pulled expense keeps when it was recorded (created_at)', synced2.expenses[0].created_at === t1, synced2.expenses);
 
   console.log('\n== deposits sync ==');
   const depositId = 'aaaaaaaa-0000-0000-0000-000000000009';
