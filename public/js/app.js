@@ -3121,10 +3121,21 @@ function applyRolePermissions() {
   document.getElementById('btn-new-room').classList.toggle('hidden', !canView);
   document.getElementById('btn-new-type').classList.toggle('hidden', !canView);
 
-  // Reports and Spending are available to assistant managers; Payroll is admin-only.
+  // Reports and Spending are available to assistant managers; all payroll details are admin-only.
   document.getElementById('nav-reports').classList.toggle('hidden', !canView);
   document.getElementById('nav-payroll').classList.toggle('hidden', !isAdmin);
   document.getElementById('nav-spending').classList.toggle('hidden', !canView);
+  const salaryReportPanel = document.querySelector('#table-report-salary')?.closest('.panel');
+  if (salaryReportPanel) salaryReportPanel.classList.toggle('hidden', !isAdmin);
+  document.querySelectorAll('#reports-print-area .stat-card').forEach(card => {
+    if (card.querySelector('#rpt-payroll')) card.classList.toggle('hidden', !isAdmin);
+  });
+  document.querySelectorAll('#table-report-trend tr').forEach(row => {
+    const payrollCell = row.children[3];
+    if (payrollCell) payrollCell.classList.toggle('hidden', !isAdmin);
+  });
+  const trendHeader = document.querySelector('#table-report-trend thead tr');
+  if (trendHeader && trendHeader.children[3]) trendHeader.children[3].classList.toggle('hidden', !isAdmin);
   if ((!canView && ['view-reports', 'view-spending'].some(id => document.getElementById(id).classList.contains('active'))) ||
       (!isAdmin && document.getElementById('view-payroll').classList.contains('active'))) {
     switchView('dashboard');
