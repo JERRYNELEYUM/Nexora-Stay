@@ -1122,6 +1122,12 @@ function renderReports() {
     });
   }
 
+  const salaryReportPanel = document.querySelector('#table-report-salary')?.closest('.panel');
+  if (salaryReportPanel) salaryReportPanel.classList.toggle('hidden', !currentStaffInfo || currentStaffInfo.role !== 'admin');
+  const payrollStatCard = document.querySelector('#rpt-payroll')?.closest('.stat-card');
+  if (payrollStatCard) payrollStatCard.classList.toggle('hidden', !currentStaffInfo || currentStaffInfo.role !== 'admin');
+  const trendHeaderRow = document.querySelector('#table-report-trend thead tr');
+  if (trendHeaderRow && trendHeaderRow.children[3]) trendHeaderRow.children[3].classList.toggle('hidden', !currentStaffInfo || currentStaffInfo.role !== 'admin');
   const salBody = document.querySelector('#table-report-salary tbody');
   salBody.innerHTML = '';
   if (!data.salaryPayments.length) {
@@ -1157,6 +1163,7 @@ function renderReports() {
     const dd = reportDataForRange(p.from, p.to);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(p.label)}</td><td>${formatMoney(dd.revenue)}</td><td>${formatMoney(dd.expensesTotal)}</td><td>${formatMoney(dd.payrollTotal)}</td><td>${formatMoney(dd.net)}</td>`;
+    if (currentStaffInfo && currentStaffInfo.role !== 'admin' && tr.children[3]) tr.children[3].classList.add('hidden');
     trendBody.appendChild(tr);
   });
 }
@@ -2902,11 +2909,13 @@ function exportInvoicesCSV() {
   downloadCSV(`invoices-${TODAY()}.csv`, headers, rows);
 }
 function exportEmployeesCSV() {
+  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Employee and payroll details are available to administrators only.'); return; }
   const headers = ['Name', 'Role', 'Phone', 'Monthly salary', 'Status', 'Date joined'];
   const rows = state.employees.map(e => [e.name, e.role, e.phone || '', e.monthlySalary, e.status || 'active', e.dateJoined || '']);
   downloadCSV(`employees-${TODAY()}.csv`, headers, rows);
 }
 function exportSalaryPaymentsCSV() {
+  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Salary payment details are available to administrators only.'); return; }
   const headers = ['Employee', 'Month', 'Amount due', 'Amount paid', 'Method', 'Date', 'Note'];
   const rows = state.salaryPayments.map(p => {
     const e = getEmployee(p.employeeId);
@@ -2925,6 +2934,7 @@ function exportDepositsCSV() {
   downloadCSV(`deposits-${TODAY()}.csv`, headers, rows);
 }
 function exportReportCSV() {
+  if (currentStaffInfo && currentStaffInfo.role !== 'admin') { toast('Report export with payroll details is available to administrators only.'); return; }
   if (!lastReportData) return;
   const d = lastReportData;
   const headers = ['Section', 'Field', 'Value'];
