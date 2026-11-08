@@ -118,6 +118,12 @@ function migrateState(parsed) {
   if (parsed.lastSyncedAt === undefined) parsed.lastSyncedAt = null;
   if (!parsed.employees) parsed.employees = [];
   if (!parsed.salaryPayments) parsed.salaryPayments = [];
+  parsed.salaryPayments.forEach(p => {
+    if (p && p.month && !/^\\d{4}-\\d{2}$/.test(String(p.month))) {
+      const d = new Date(String(p.month) + ' 1');
+      if (!Number.isNaN(d.getTime())) p.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+  });
   if (!parsed.expenseCategories) parsed.expenseCategories = ['Utilities', 'Maintenance & Repairs', 'Supplies', 'Laundry', 'Transport', 'Food & Beverage', 'Administration', 'Marketing', 'Other'];
   if (!parsed.expenses) parsed.expenses = [];
   parsed.expenses.forEach(stampExpenseCreated); // older records predate createdAt — fix their place in the list once
@@ -1156,25 +1162,42 @@ function renderReports() {
    ============================================================ */
 function getEmployee(id) { return state.employees.find(e => e.id === id); }
 
+function payrollMonthKey(date) {
+  const d = date ? new Date(date + (String(date).length === 10 ? 'T12:00:00' : '')) : new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function payrollMonthLabel(key) {
+  if (!/^\\d{4}-\\d{2}$/.test(String(key || ''))) return String(key || '—');
+  const parts = key.split('-').map(Number);
+  return new Date(parts[0], parts[1] - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+}
+function payrollStatus(employeeId, month) {
+  const employee = getEmployee(employeeId);
+  const due = employee ? Number(employee.monthlySalary) || 0 : 0;
+  const paid = state.salaryPayments.filter(p => p.employeeId === employeeId && p.month === month)
+    .reduce((sum, p) => sum + (Number(p.amountPaid) || 0), 0);
+  return { due, paid, remaining: Math.max(0, due - paid) };
+}
 function renderPayroll() {
   const active = state.employees.filter(e => e.status !== 'left');
   const monthlyTotal = active.reduce((s, e) => s + (Number(e.monthlySalary) || 0), 0);
   const paidAllTime = state.salaryPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
-
+  const month = payrollMonthKey();
   document.getElementById('pr-active-count').textContent = active.length;
   document.getElementById('pr-monthly-total').textContent = formatMoney(monthlyTotal);
   document.getElementById('pr-paid-alltime').textContent = formatMoney(paidAllTime);
-
   const body = document.querySelector('#table-employees tbody');
   body.innerHTML = '';
   if (!state.employees.length) {
-    body.innerHTML = `<tr class="muted-row"><td colspan="6">No employees added yet.</td></tr>`;
+    body.innerHTML = `<tr class="muted-row"><td colspan="7">No employees added yet.</td></tr>`;
   } else {
     state.employees.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(e => {
       const tr = document.createElement('tr');
       const left = e.status === 'left';
+      const ms = payrollStatus(e.id, month);
       tr.innerHTML = `<td>${escapeHtml(e.name)}</td><td>${escapeHtml(e.role)}</td><td>${escapeHtml(e.phone || '—')}</td>
         <td>${formatMoney(e.monthlySalary)}</td>
+        <td>${ms.remaining <= 0 ? '<span class="badge badge-checked-in">Paid</span>' : '<span class="badge badge-cancelled">Owes ' + formatMoney(ms.remaining) + '</span>'}</td>
         <td><span class="badge ${left ? 'badge-cancelled' : 'badge-checked-in'}">${left ? 'Left' : 'Active'}</span></td>
         <td><button class="link-btn" data-pay-salary="${e.id}">Pay salary</button>
           <button class="link-btn" data-edit-employee="${e.id}">Edit</button></td>`;
@@ -1183,22 +1206,24 @@ function renderPayroll() {
   }
   body.querySelectorAll('[data-pay-salary]').forEach(btn => btn.onclick = () => openSalaryPayModal(btn.dataset.paySalary));
   body.querySelectorAll('[data-edit-employee]').forEach(btn => btn.onclick = () => openEmployeeModal(btn.dataset.editEmployee));
-
   const payBody = document.querySelector('#table-salary-payments tbody');
   payBody.innerHTML = '';
-  const recent = state.salaryPayments.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
+  const recent = state.salaryPayments.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 20);
   if (!recent.length) {
-    payBody.innerHTML = `<tr class="muted-row"><td colspan="6">No salary payments recorded yet.</td></tr>`;
+    payBody.innerHTML = `<tr class="muted-row"><td colspan="7">No salary payments recorded yet.</td></tr>`;
   } else {
     recent.forEach(p => {
       const e = getEmployee(p.employeeId);
+      const ms = payrollStatus(p.employeeId, p.month);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(p.month)}</td>
+      tr.innerHTML = `<td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(payrollMonthLabel(p.month))}${p.isAdvance ? ' (Advance)' : ''}</td>
         <td>${formatMoney(p.amountDue)}</td><td>${formatMoney(p.amountPaid)}</td>
-        <td>${escapeHtml(p.method)}</td><td>${p.date}</td>`;
+        <td>${escapeHtml(p.method)}</td><td>${escapeHtml(p.date || '—')}</td>
+        <td><button class="link-btn" data-view-salary="${p.id}">View / Print</button></td>`;
       payBody.appendChild(tr);
     });
   }
+  payBody.querySelectorAll('[data-view-salary]').forEach(btn => btn.onclick = () => viewSalaryPayment(btn.dataset.viewSalary));
 }
 
 function openEmployeeModal(employeeId) {
@@ -1239,41 +1264,96 @@ document.getElementById('form-employee').addEventListener('submit', (e) => {
   toast('Employee saved.');
 });
 
+function updateSalaryPreview(employeeId) {
+  const month = document.getElementById('sp-month').value;
+  const ms = payrollStatus(employeeId, month);
+  const preview = document.getElementById('sp-preview');
+  const paidInput = document.getElementById('sp-paid');
+  const saveBtn = document.getElementById('sp-save-btn');
+  const isAdvance = month > payrollMonthKey();
+  document.getElementById('sp-due').value = ms.due;
+  if (ms.remaining <= 0) {
+    preview.innerHTML = '<strong>' + escapeHtml(payrollMonthLabel(month)) + ' is already fully paid (' + formatMoney(ms.paid) + ' of ' + formatMoney(ms.due) + '). Choose another month for an advance.</strong>';
+    paidInput.value = ''; paidInput.max = 0; paidInput.disabled = true; saveBtn.disabled = true;
+  } else {
+    preview.innerHTML = (isAdvance ? '<span class="badge">Advance</span> ' : '') +
+      'Due ' + formatMoney(ms.due) + ' · Already paid ' + formatMoney(ms.paid) + ' · <strong>Remaining ' + formatMoney(ms.remaining) + '</strong>';
+    paidInput.disabled = false; paidInput.max = ms.remaining; paidInput.value = ms.remaining; saveBtn.disabled = false;
+  }
+  document.getElementById('sp-amount-warning').textContent = '';
+}
+function validateSalaryAmount() {
+  const input = document.getElementById('sp-paid');
+  const max = Number(input.max || 0);
+  const amount = Number(input.value) || 0;
+  document.getElementById('sp-amount-warning').textContent =
+    max > 0 && amount > max ? 'Maximum remaining for this month is ' + formatMoney(max) + '. Use a future month to record an advance.' : '';
+}
 function openSalaryPayModal(employeeId) {
   const e = getEmployee(employeeId);
   if (!e) return;
-  const now = new Date();
-  const defaultMonth = now.toLocaleString('en-US', { month: 'long' }) + ' ' + now.getFullYear();
   document.getElementById('salary-modal-title').textContent = 'Pay salary — ' + e.name;
   document.getElementById('sp-employee-id').value = e.id;
-  document.getElementById('sp-month').value = defaultMonth;
-  document.getElementById('sp-due').value = e.monthlySalary;
-  document.getElementById('sp-paid').value = e.monthlySalary;
+  document.getElementById('sp-month').value = payrollMonthKey();
   document.getElementById('sp-date').value = TODAY();
+  document.getElementById('sp-method').selectedIndex = 0;
+  document.getElementById('sp-note').value = '';
   document.getElementById('sp-error').textContent = '';
   document.getElementById('modal-salary-pay').classList.remove('hidden');
+  updateSalaryPreview(employeeId);
 }
+document.getElementById('sp-month').addEventListener('change', () => updateSalaryPreview(document.getElementById('sp-employee-id').value));
+document.getElementById('sp-paid').addEventListener('input', validateSalaryAmount);
 document.getElementById('form-salary-pay').addEventListener('submit', (e) => {
   e.preventDefault();
   const errEl = document.getElementById('sp-error');
   errEl.textContent = '';
   const employeeId = document.getElementById('sp-employee-id').value;
-  const month = document.getElementById('sp-month').value.trim();
-  const amountDue = Number(document.getElementById('sp-due').value) || 0;
+  const employee = getEmployee(employeeId);
+  const month = document.getElementById('sp-month').value;
   const amountPaid = Number(document.getElementById('sp-paid').value) || 0;
   const date = document.getElementById('sp-date').value || TODAY();
   const method = document.getElementById('sp-method').value;
   const note = document.getElementById('sp-note').value.trim();
-  if (!month || amountPaid <= 0) { errEl.textContent = 'Enter a month and a valid amount paid.'; return; }
-
+  const ms = payrollStatus(employeeId, month);
+  if (!employee || !/^\\d{4}-\\d{2}$/.test(month)) { errEl.textContent = 'Select a valid employee and month.'; return; }
+  if (ms.remaining <= 0) { errEl.textContent = 'This month is already fully paid. Choose a future month for an advance.'; return; }
+  if (amountPaid <= 0 || amountPaid > ms.remaining) { errEl.textContent = 'Enter an amount greater than zero and no more than the remaining balance of ' + formatMoney(ms.remaining) + '.'; return; }
   state.salaryPayments.push(touch({
-    id: uid(), employeeId, month, amountDue, amountPaid, date, method, note,
+    id: uid(), employeeId, month, amountDue: ms.due, amountPaid, date, method, note,
+    isAdvance: month > payrollMonthKey(), recordedBy: currentStaffInfo ? currentStaffInfo.name : '',
   }));
   saveState();
   document.getElementById('modal-salary-pay').classList.add('hidden');
   renderPayroll();
-  toast('Salary payment recorded.');
+  toast(month > payrollMonthKey() ? 'Advance salary payment recorded.' : 'Salary payment recorded.');
 });
+function viewSalaryPayment(paymentId) {
+  const p = state.salaryPayments.find(x => x.id === paymentId);
+  if (!p) return;
+  const employee = getEmployee(p.employeeId);
+  const ms = payrollStatus(p.employeeId, p.month);
+  let modal = document.getElementById('modal-salary-view');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modal-salary-view'; modal.className = 'modal-overlay';
+    modal.innerHTML = '<div class="modal"><div class="modal-head"><h3>Salary payment slip</h3><button class="modal-close" type="button" data-close-salary-view>×</button></div><div class="modal-body" id="salary-slip-content"></div><div class="form-actions"><button class="btn btn-ghost" type="button" data-close-salary-view>Close</button><button class="btn btn-accent" type="button" id="btn-print-salary-slip">Print</button></div></div>';
+    document.body.appendChild(modal);
+    modal.querySelectorAll('[data-close-salary-view]').forEach(b => b.addEventListener('click', () => modal.classList.add('hidden')));
+    modal.querySelector('#btn-print-salary-slip').addEventListener('click', () => window.print());
+  }
+  const methodLabels = { 'MTN Mobile Money': 'MTN MoMo', 'Orange Money': 'Orange Money', 'Bank transfer': 'Bank Transfer', cash: 'Cash', momo: 'MTN MoMo', om: 'Orange Money', bank: 'Bank Transfer' };
+  document.getElementById('salary-slip-content').innerHTML = '<div class="invoice">' +
+    '<div class="invoice-head"><h2>' + escapeHtml(state.hotel.name) + '</h2><div>' + escapeHtml(state.hotel.address || '') + '</div><div>' + escapeHtml(state.hotel.phone || '') + '</div></div>' +
+    '<h3 style="text-align:center">SALARY PAYMENT SLIP' + (p.isAdvance ? ' (ADVANCE)' : '') + '</h3>' +
+    '<p>Reference: ' + escapeHtml(p.id) + '</p><p>Employee: ' + escapeHtml(employee ? employee.name : '—') + '</p>' +
+    '<p>Position: ' + escapeHtml(employee ? employee.role : '—') + '</p><p>Month: ' + escapeHtml(payrollMonthLabel(p.month)) + '</p>' +
+    '<p>Date paid: ' + escapeHtml(p.date || '—') + '</p><hr><p>Monthly salary (due): ' + formatMoney(p.amountDue) + '</p>' +
+    '<p><strong>Amount paid: ' + formatMoney(p.amountPaid) + ' ' + escapeHtml(state.hotel.currency || 'FCFA') + '</strong></p>' +
+    '<p>Balance remaining: ' + formatMoney(ms.remaining) + '</p><p>Payment method: ' + escapeHtml(methodLabels[p.method] || p.method || '—') + '</p>' +
+    (p.note ? '<p>Note: ' + escapeHtml(p.note) + '</p>' : '') + '<p>Recorded by: ' + escapeHtml(p.recordedBy || '—') + '</p></div>';
+  modal.classList.remove('hidden');
+}
 
 /* ============================================================
    SPENDING — general hotel expenses (utilities, maintenance,
