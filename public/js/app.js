@@ -884,6 +884,14 @@ function deleteType(typeId) {
    VIEW SWITCHING
    ============================================================ */
 function switchView(view) {
+  if (view === 'payroll' && (!currentStaffInfo || currentStaffInfo.role !== 'admin')) {
+    toast('Payroll is available to administrators only.');
+    return;
+  }
+  if (view === 'spending' && (!currentStaffInfo || !['admin', 'assistant'].includes(currentStaffInfo.role))) {
+    toast('Spending is available to administrators and assistant managers only.');
+    return;
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
@@ -3113,11 +3121,12 @@ function applyRolePermissions() {
   document.getElementById('btn-new-room').classList.toggle('hidden', !canView);
   document.getElementById('btn-new-type').classList.toggle('hidden', !canView);
 
-  // Nav — Reports/Payroll/Spending open up to admin+assistant.
+  // Reports and Spending are available to assistant managers; Payroll is admin-only.
   document.getElementById('nav-reports').classList.toggle('hidden', !canView);
-  document.getElementById('nav-payroll').classList.toggle('hidden', !canView);
+  document.getElementById('nav-payroll').classList.toggle('hidden', !isAdmin);
   document.getElementById('nav-spending').classList.toggle('hidden', !canView);
-  if (!canView && ['view-reports', 'view-payroll', 'view-spending'].some(id => document.getElementById(id).classList.contains('active'))) {
+  if ((!canView && ['view-reports', 'view-spending'].some(id => document.getElementById(id).classList.contains('active'))) ||
+      (!isAdmin && document.getElementById('view-payroll').classList.contains('active'))) {
     switchView('dashboard');
   }
 }
