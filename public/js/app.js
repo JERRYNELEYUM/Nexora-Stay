@@ -119,7 +119,7 @@ function migrateState(parsed) {
   if (!parsed.employees) parsed.employees = [];
   if (!parsed.salaryPayments) parsed.salaryPayments = [];
   parsed.salaryPayments.forEach(p => {
-    if (p && p.month && !/^\\d{4}-\\d{2}$/.test(String(p.month))) {
+    if (p && p.month && !/^\d{4}-\d{2}$/.test(String(p.month))) {
       const d = new Date(String(p.month) + ' 1');
       if (!Number.isNaN(d.getTime())) p.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     }
@@ -1182,7 +1182,7 @@ function payrollMonthKey(date) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
 function payrollMonthLabel(key) {
-  if (!/^\\d{4}-\\d{2}$/.test(String(key || ''))) return String(key || '—');
+  if (!/^\d{4}-\d{2}$/.test(String(key || ''))) return String(key || '—');
   const parts = key.split('-').map(Number);
   return new Date(parts[0], parts[1] - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
@@ -1287,7 +1287,7 @@ function updateSalaryPreview(employeeId) {
   const saveBtn = document.getElementById('sp-save-btn');
   const isAdvance = month > payrollMonthKey();
   document.getElementById('sp-due').value = ms.due;
-  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) {
     preview.textContent = 'Choose a valid salary month.';
     paidInput.value = ''; paidInput.max = 0; paidInput.disabled = true; saveBtn.disabled = true;
   } else if (ms.remaining <= 0) {
@@ -1334,8 +1334,8 @@ document.getElementById('form-salary-pay').addEventListener('submit', (e) => {
   const method = document.getElementById('sp-method').value;
   const note = document.getElementById('sp-note').value.trim();
   const ms = payrollStatus(employeeId, month);
-  if (!employee || !/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) { errEl.textContent = 'Select a valid employee and salary month.'; return; }
-  if (!date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) { errEl.textContent = 'Select a valid payment date.'; return; }
+  if (!employee || !/^\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) { errEl.textContent = 'Select a valid employee and salary month.'; return; }
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) { errEl.textContent = 'Select a valid payment date.'; return; }
   if (ms.remaining <= 0) { errEl.textContent = 'This month is already fully paid. Choose another month for an advance.'; return; }
   if (amountPaid <= 0 || amountPaid > ms.remaining) { errEl.textContent = 'Enter an amount greater than zero and no more than the remaining balance of ' + formatMoney(ms.remaining) + '.'; return; }
   state.salaryPayments.push(touch({
