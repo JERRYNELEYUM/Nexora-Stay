@@ -1233,7 +1233,7 @@ function renderPayroll() {
       const tr = document.createElement('tr');
       tr.innerHTML = `<td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(payrollMonthLabel(p.month))}${p.isAdvance ? ' (Advance)' : ''}</td>
         <td>${formatMoney(p.amountDue)}</td><td>${formatMoney(p.amountPaid)}</td>
-        <td>${escapeHtml(p.method)}</td><td>${escapeHtml(p.date || '—')}</td>
+        <td>${formatMoney(ms.remaining)}</td><td>${escapeHtml(p.method)}</td><td>${escapeHtml(p.date || '—')}</td>
         <td><button class="link-btn" data-view-salary="${p.id}">View / Print</button></td>`;
       payBody.appendChild(tr);
     });
@@ -1287,12 +1287,15 @@ function updateSalaryPreview(employeeId) {
   const saveBtn = document.getElementById('sp-save-btn');
   const isAdvance = month > payrollMonthKey();
   document.getElementById('sp-due').value = ms.due;
-  if (ms.remaining <= 0) {
-    preview.innerHTML = '<strong>' + escapeHtml(payrollMonthLabel(month)) + ' is already fully paid (' + formatMoney(ms.paid) + ' of ' + formatMoney(ms.due) + '). Choose another month for an advance.</strong>';
+  if (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) {
+    preview.textContent = 'Choose a valid salary month.';
+    paidInput.value = ''; paidInput.max = 0; paidInput.disabled = true; saveBtn.disabled = true;
+  } else if (ms.remaining <= 0) {
+    preview.innerHTML = '<strong>' + escapeHtml(payrollMonthLabel(month)) + ' is already fully paid (' + formatMoney(ms.paid) + ' of ' + formatMoney(ms.due) + '). Choose a different month for an advance.</strong>';
     paidInput.value = ''; paidInput.max = 0; paidInput.disabled = true; saveBtn.disabled = true;
   } else {
-    preview.innerHTML = (isAdvance ? '<span class="badge">Advance</span> ' : '') +
-      'Due ' + formatMoney(ms.due) + ' · Already paid ' + formatMoney(ms.paid) + ' · <strong>Remaining ' + formatMoney(ms.remaining) + '</strong>';
+    preview.innerHTML = (isAdvance ? '<span class="badge">Advance payment</span> ' : '') +
+      'Monthly due ' + formatMoney(ms.due) + ' · Already paid ' + formatMoney(ms.paid) + ' · <strong>Balance remaining ' + formatMoney(ms.remaining) + '</strong>';
     paidInput.disabled = false; paidInput.max = ms.remaining; paidInput.value = ms.remaining; saveBtn.disabled = false;
   }
   document.getElementById('sp-amount-warning').textContent = '';
@@ -1331,8 +1334,9 @@ document.getElementById('form-salary-pay').addEventListener('submit', (e) => {
   const method = document.getElementById('sp-method').value;
   const note = document.getElementById('sp-note').value.trim();
   const ms = payrollStatus(employeeId, month);
-  if (!employee || !/^\\d{4}-\\d{2}$/.test(month)) { errEl.textContent = 'Select a valid employee and month.'; return; }
-  if (ms.remaining <= 0) { errEl.textContent = 'This month is already fully paid. Choose a future month for an advance.'; return; }
+  if (!employee || !/^\\d{4}-(0[1-9]|1[0-2])$/.test(String(month || ''))) { errEl.textContent = 'Select a valid employee and salary month.'; return; }
+  if (!date || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)) { errEl.textContent = 'Select a valid payment date.'; return; }
+  if (ms.remaining <= 0) { errEl.textContent = 'This month is already fully paid. Choose another month for an advance.'; return; }
   if (amountPaid <= 0 || amountPaid > ms.remaining) { errEl.textContent = 'Enter an amount greater than zero and no more than the remaining balance of ' + formatMoney(ms.remaining) + '.'; return; }
   state.salaryPayments.push(touch({
     id: uid(), employeeId, month, amountDue: ms.due, amountPaid, date, method, note,
