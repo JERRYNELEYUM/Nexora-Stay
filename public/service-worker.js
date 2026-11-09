@@ -14,7 +14,7 @@
      copy is only used when the network is unavailable or very slow.
 
    Bump CACHE_NAME whenever the shell files change. */
-const CACHE_NAME = 'nexora-stay-v6';
+const CACHE_NAME = 'nexora-stay-v7';
 const APP_SHELL = [
   './',
   './index.html',
