@@ -406,14 +406,14 @@
         </div>
         <p class="hint-text">This is your payroll roster — cleaners, cooks, security and anyone else on salary, whether or not they have a PIN login to this app. It's separate from Settings → Staff accounts, which controls who can sign in.</p>
         <div class="table-wrap"><table class="table" id="table-employees"><thead>
-          <tr><th>Name</th><th>Role</th><th>Phone</th><th>Monthly salary</th><th>Status</th><th></th></tr>
+          <tr><th>Name</th><th>Role</th><th>Phone</th><th>Monthly salary</th><th>Balance (this month)</th><th>Status</th><th></th></tr>
         </thead><tbody></tbody></table></div>
       </div>
 
       <div class="panel">
         <div class="panel-head"><h2>Recent salary payments</h2><button class="btn btn-ghost" id="btn-export-salary-payments">Export CSV</button></div>
         <div class="table-wrap"><table class="table" id="table-salary-payments"><thead>
-          <tr><th>Employee</th><th>Month</th><th>Due</th><th>Paid</th><th>Method</th><th>Date</th></tr>
+          <tr><th>Employee</th><th>Month</th><th>Due</th><th>Paid</th><th>Balance after payment</th><th>Method</th><th>Date</th><th></th></tr>
         </thead><tbody></tbody></table></div>
       </div>
     </section>
@@ -619,10 +619,12 @@
     <form id="form-salary-pay">
       <input type="hidden" id="sp-employee-id">
       <div class="form-grid">
-        <label class="span-2">Month<input type="text" id="sp-month" placeholder="e.g. September 2026" required></label>
-        <label>Amount due<input type="number" min="0" step="1" id="sp-due" required></label>
-        <label>Amount paid<input type="number" min="0" step="1" id="sp-paid" required></label>
-        <label>Payment date<input type="date" id="sp-date" required></label>
+        <label class="span-2">Salary month<input type="month" id="sp-month" required></label>
+        <div class="span-2 hint-text" id="sp-preview">Select a month to calculate the salary balance.</div>
+        <label>Monthly salary due<input type="number" min="0" step="1" id="sp-due" readonly required></label>
+        <label>Amount paying now<input type="number" min="0" step="1" id="sp-paid" required></label>
+        <label class="span-2">Payment date<input type="date" id="sp-date" required></label>
+        <p class="form-error span-2" id="sp-amount-warning"></p>
         <label>Method<select id="sp-method">
           <option>Cash</option>
           <option>MTN Mobile Money</option>
