@@ -191,6 +191,10 @@ create table if not exists expenses (
 alter table expenses add column if not exists recorded_by text default '';
 -- no default on purpose: existing rows must not all get "now" as their creation time
 alter table expenses add column if not exists created_at timestamptz;
+alter table expenses add column if not exists voided boolean not null default false;
+alter table expenses add column if not exists voided_at timestamptz;
+alter table expenses add column if not exists voided_by text default '';
+alter table expenses add column if not exists void_reason text default '';
 
 -- ---------- cash/bank deposits — money moved out of the till, tracked
 --            separately from expenses since it's a transfer, not a spend ----------
@@ -201,8 +205,16 @@ create table if not exists deposits (
   method text not null default 'Cash',
   destination text default '',
   note text default '',
+  voided boolean not null default false,
+  voided_at timestamptz,
+  voided_by text default '',
+  void_reason text default '',
   updated_at timestamptz not null default now()
 );
+alter table deposits add column if not exists voided boolean not null default false;
+alter table deposits add column if not exists voided_at timestamptz;
+alter table deposits add column if not exists voided_by text default '';
+alter table deposits add column if not exists void_reason text default '';
 
 -- ---------- lock everything down; only the service role (used by
 --            Netlify Functions) can bypass RLS and read/write ----------
