@@ -24,7 +24,8 @@ const TABLES = [
 const LATE_COLUMNS = [
   ['hotel_settings', ['email', 'taxpayer_number', 'registration_number']],
   ['invoices', ['discount_type', 'discount_value', 'discount_note', 'discount_applied_by', 'voided', 'voided_at', 'voided_by', 'void_reason']],
-  ['expenses', ['recorded_by', 'created_at']],
+  ['expenses', ['recorded_by', 'created_at', 'voided', 'voided_at', 'voided_by', 'void_reason']],
+  ['deposits', ['voided', 'voided_at', 'voided_by', 'void_reason']],
 ];
 
 /* GET /sync?ping=1 — quick "is the backend set up correctly?" check. Cheap:
