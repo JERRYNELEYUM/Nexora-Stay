@@ -126,8 +126,9 @@ function migrateState(parsed) {
   });
   if (!parsed.expenseCategories) parsed.expenseCategories = ['Utilities', 'Maintenance & Repairs', 'Supplies', 'Laundry', 'Transport', 'Food & Beverage', 'Administration', 'Marketing', 'Other'];
   if (!parsed.expenses) parsed.expenses = [];
-  parsed.expenses.forEach(stampExpenseCreated); // older records predate createdAt — fix their place in the list once
+  parsed.expenses.forEach(ex => { if (ex.voided === undefined) ex.voided = false; stampExpenseCreated(ex); });
   if (!parsed.deposits) parsed.deposits = [];
+  parsed.deposits.forEach(d => { if (d.voided === undefined) d.voided = false; });
   if (!parsed.counters) parsed.counters = { invoice: 1 };
   if (parsed.hotel) {
     if (parsed.hotel.email === undefined) parsed.hotel.email = '';
@@ -336,12 +337,16 @@ function compactJournal(list) {
   return out;
 }
 function journalEntry(ex) {
-  return { a: 'add', id: ex.id, t: Date.now(), d: ex.date, c: ex.category, s: ex.description, n: ex.amount, m: ex.method, v: ex.vendor || '', r: ex.recordedBy || '', k: ex.createdAt || '' };
+  return { a: 'add', id: ex.id, t: Date.now(), d: ex.date, c: ex.category, s: ex.description, n: ex.amount, m: ex.method, v: ex.vendor || '', r: ex.recordedBy || '', k: ex.createdAt || '',
+    voided: !!ex.voided, voidedAt: ex.voidedAt || '', voidedBy: ex.voidedBy || '', voidReason: ex.voidReason || '' };
 }
 function journalExpense(action, ex) {
   const list = readJournal();
   if (action === 'add') { if (list.some(x => x.a === 'add' && x.id === ex.id)) return; list.push(journalEntry(ex)); }
-  else list.push({ a: 'del', id: ex.id, t: Date.now() });
+  else if (action === 'void') {
+    const idx = list.findIndex(x => x.a === 'add' && x.id === ex.id);
+    if (idx >= 0) list[idx] = journalEntry(ex); else list.push(journalEntry(ex));
+  } else list.push({ a: 'del', id: ex.id, t: Date.now() });
   writeJournal(compactJournal(list));
 }
 function journalCurrentExpenses() { // protects expenses that already exist (e.g. from before the log, or pulled from the backend)
@@ -360,7 +365,7 @@ function findMissingExpenses() {
 }
 function restoreMissingExpenses() {
   const missing = findMissingExpenses();
-  missing.forEach(x => state.expenses.push(touch({ id: x.id, date: x.d, category: x.c, description: x.s, amount: x.n, method: x.m, vendor: x.v, recordedBy: x.r, createdAt: x.k || new Date(x.t || Date.now()).toISOString(), restored: true })));
+  missing.forEach(x => state.expenses.push(touch({ id: x.id, date: x.d, category: x.c, description: x.s, amount: x.n, method: x.m, vendor: x.v, recordedBy: x.r, createdAt: x.k || new Date(x.t || Date.now()).toISOString(), restored: true, voided: !!x.voided, voidedAt: x.voidedAt || '', voidedBy: x.voidedBy || '', voidReason: x.voidReason || '' })));
   saveState();
   renderSpending();
   toast('Restored ' + missing.length + ' expense record' + (missing.length === 1 ? '' : 's') + '.');
@@ -970,7 +975,7 @@ function reportDataForRange(fromStr, toStr) {
   });
 
   const expenses = state.expenses.filter(e => e.date >= fromStr && e.date <= toStr);
-  const expensesTotal = expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const expensesTotal = expenses.filter(e => !e.voided).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const salaryPayments = state.salaryPayments.filter(p => p.date >= fromStr && p.date <= toStr);
   const payrollTotal = salaryPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
   const deposits = (state.deposits || []).filter(d => d.date >= fromStr && d.date <= toStr);
@@ -1117,7 +1122,7 @@ function renderReports() {
   } else {
     data.expenses.slice().sort(byNewestExpense).forEach(ex => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${ex.date}</td><td>${escapeHtml(ex.description)}</td><td>${escapeHtml(ex.category)}</td><td>${formatMoney(ex.amount)}</td>`;
+      tr.innerHTML = `<td>${ex.date}</td><td>${escapeHtml(ex.description)}${ex.voided ? ' <span class="badge badge-cancelled">VOID</span>' : ''}</td><td>${escapeHtml(ex.category)}</td><td>${formatMoney(ex.amount)}${ex.voided ? '<div class="hint-text">Excluded from totals · ' + escapeHtml(ex.voidReason || 'No reason supplied') + '</div>' : ''}</td>`;
       expBody.appendChild(tr);
     });
   }
@@ -1380,12 +1385,10 @@ function viewSalaryPayment(paymentId) {
    ============================================================ */
 function renderSpending() {
   renderLetterhead('spending-print-header', 'Spending report', 'as of ' + TODAY());
-  const total = state.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const total = state.expenses.filter(e => !e.voided).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const monthPrefix = TODAY().slice(0, 7);
-  const monthTotal = state.expenses
-    .filter(e => e.date.slice(0, 7) === monthPrefix)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const depositedTotal = (state.deposits || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  const monthTotal = state.expenses.filter(e => !e.voided && e.date.slice(0, 7) === monthPrefix).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const depositedTotal = (state.deposits || []).filter(d => !d.voided).reduce((s, d) => s + (Number(d.amount) || 0), 0);
 
   document.getElementById('sp-total').textContent = formatMoney(total);
   document.getElementById('sp-count').textContent = state.expenses.length;
@@ -1407,18 +1410,20 @@ function renderDepositsTable() {
   body.innerHTML = '';
   const list = (state.deposits || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   if (!list.length) {
-    body.innerHTML = `<tr class="muted-row"><td colspan="6">No deposits recorded yet.</td></tr>`;
+    body.innerHTML = `<tr class="muted-row"><td colspan="7">No deposits recorded yet.</td></tr>`;
     return;
   }
-  const canDelete = currentStaffInfo && currentStaffInfo.role === 'admin';
+  const canVoid = currentStaffInfo && currentStaffInfo.role === 'admin';
   list.forEach(d => {
     const tr = document.createElement('tr');
+    if (d.voided) tr.style.opacity = '0.72';
     tr.innerHTML = `<td>${d.date}</td><td>${escapeHtml(d.destination || '—')}</td><td>${escapeHtml(d.method)}</td>
-      <td>${escapeHtml(d.note || '—')}</td><td>${formatMoney(d.amount)}</td>
-      <td>${canDelete ? `<button class="icon-btn" data-del-deposit="${d.id}">Remove</button>` : ''}</td>`;
+      <td>${escapeHtml(d.note || '—')}${d.voided ? '<div class="hint-text">Voided: ' + escapeHtml(d.voidReason || 'No reason supplied') + '</div>' : ''}</td>
+      <td>${formatMoney(d.amount)}</td><td>${d.voided ? '<span class="badge badge-cancelled">VOID</span>' : '<span class="badge badge-checked-in">Active</span>'}</td>
+      <td>${canVoid && !d.voided ? `<button class="icon-btn" data-void-deposit="${d.id}">Void</button>` : ''}</td>`;
     body.appendChild(tr);
   });
-  body.querySelectorAll('[data-del-deposit]').forEach(btn => btn.onclick = () => deleteDeposit(btn.dataset.delDeposit));
+  body.querySelectorAll('[data-void-deposit]').forEach(btn => btn.onclick = () => voidDeposit(btn.dataset.voidDeposit));
 }
 
 function openDepositModal() {
@@ -1441,21 +1446,24 @@ document.getElementById('form-deposit').addEventListener('submit', (e) => {
   if (!amount || amount <= 0) { errEl.textContent = 'Enter a valid amount.'; return; }
 
   state.deposits = state.deposits || [];
-  state.deposits.push(touch({ id: uid(), date, amount, method, destination, note }));
+  state.deposits.push(touch({ id: uid(), date, amount, method, destination, note, voided: false }));
   saveState();
   document.getElementById('modal-deposit').classList.add('hidden');
   renderSpending();
   toast('Deposit recorded.');
 });
-function deleteDeposit(id) {
-  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Only an admin can remove a deposit record.'); return; }
-  if (!confirm('Delete this deposit record? This cannot be undone.')) return;
-  state.deposits = (state.deposits || []).filter(d => d.id !== id);
-  noteDelete('deposits', id);
-  saveState();
-  renderDepositsTable();
-  renderSpending();
-  toast('Deposit removed.');
+function voidDeposit(id) {
+  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Only an administrator can void a deposit record.'); return; }
+  const record = (state.deposits || []).find(d => d.id === id);
+  if (!record || record.voided) return;
+  const reason = prompt('Enter the reason for voiding this deposit record:');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('A reason is required to void a deposit.'); return; }
+  if (!confirm('Void this deposit? It will remain visible but will no longer affect deposit totals.')) return;
+  record.voided = true; record.voidedAt = new Date().toISOString();
+  record.voidedBy = currentStaffInfo.name || 'Administrator'; record.voidReason = reason.trim();
+  touch(record); saveState(); renderSpending();
+  toast('Deposit voided. The record remains in the system.');
 }
 
 function renderExpenseTable() {
@@ -1487,21 +1495,22 @@ function renderExpenseTable() {
   }
 
   if (!list.length) {
-    body.innerHTML = `<tr class="muted-row"><td colspan="7">No expenses match your filters.</td></tr>`;
+    body.innerHTML = `<tr class="muted-row"><td colspan="8">No expenses match your filters.</td></tr>`;
     return;
   }
-  const canDelete = currentStaffInfo && currentStaffInfo.role === 'admin';
+  const canVoid = currentStaffInfo && currentStaffInfo.role === 'admin';
   list.forEach(e => {
     const tr = document.createElement('tr');
+    if (e.voided) tr.style.opacity = '0.72';
     tr.innerHTML = `<td>${e.date}</td><td>${escapeHtml(e.description)}</td>
       <td><span class="badge badge-reserved">${escapeHtml(e.category)}</span></td>
-      <td>${escapeHtml(e.vendor || '—')}</td><td>${escapeHtml(e.method)}</td>
-      <td>${formatMoney(e.amount)}</td>
-      <td><button class="link-btn" data-view-expense="${e.id}">View</button>${canDelete ? `<button class="icon-btn" data-del-expense="${e.id}">Remove</button>` : ''}</td>`;
+      <td>${escapeHtml(e.vendor || '—')}</td><td>${escapeHtml(e.method)}</td><td>${formatMoney(e.amount)}</td>
+      <td>${e.voided ? '<span class="badge badge-cancelled">VOID</span>' : '<span class="badge badge-checked-in">Active</span>'}</td>
+      <td><button class="link-btn" data-view-expense="${e.id}">View</button>${canVoid && !e.voided ? `<button class="icon-btn" data-void-expense="${e.id}">Void</button>` : ''}</td>`;
     body.appendChild(tr);
   });
   body.querySelectorAll('[data-view-expense]').forEach(btn => btn.onclick = () => openExpenseView(btn.dataset.viewExpense));
-  body.querySelectorAll('[data-del-expense]').forEach(btn => btn.onclick = () => deleteExpense(btn.dataset.delExpense));
+  body.querySelectorAll('[data-void-expense]').forEach(btn => btn.onclick = () => voidExpense(btn.dataset.voidExpense));
 }
 
 function expenseNumber(ex) {
@@ -1532,6 +1541,7 @@ function openExpenseView(expenseId) {
           Dated ${ex.date}
         </div>
       </div>
+      ${ex.voided ? '<div style="border:2px solid var(--occupied);color:var(--occupied);display:inline-block;padding:5px 14px;font-weight:800;letter-spacing:2px;margin:8px 0;">VOID</div>' : ''}
       <table>
         <thead><tr><th>Field</th><th>Detail</th></tr></thead>
         <tbody>
@@ -1540,10 +1550,11 @@ function openExpenseView(expenseId) {
           <tr><td class="desc">Vendor / payee</td><td>${escapeHtml(ex.vendor || '—')}</td></tr>
           <tr><td class="desc">Payment method</td><td>${escapeHtml(ex.method)}</td></tr>
           ${ex.recordedBy ? `<tr><td class="desc">Recorded by</td><td>${escapeHtml(ex.recordedBy)}</td></tr>` : ''}
+          ${ex.voided ? `<tr><td class="desc">Voided by</td><td>${escapeHtml(ex.voidedBy || '—')}</td></tr><tr><td class="desc">Voided at</td><td>${escapeHtml(ex.voidedAt || '—')}</td></tr><tr><td class="desc">Void reason</td><td>${escapeHtml(ex.voidReason || '—')}</td></tr>` : ''}
         </tbody>
       </table>
       <div class="totals">
-        <div class="grand"><span>Amount</span><span>${formatMoney(ex.amount)}</span></div>
+        <div class="grand"><span>${ex.voided ? 'Original amount (voided; excluded from totals)' : 'Amount'}</span><span>${formatMoney(ex.amount)}</span></div>
       </div>
     </div>
   `;
@@ -1574,7 +1585,7 @@ document.getElementById('form-expense').addEventListener('submit', (e) => {
   if (!description || !amount || amount <= 0) { errEl.textContent = 'Enter a description and a valid amount.'; return; }
 
   const recordedBy = currentStaffInfo ? currentStaffInfo.name : '';
-  const newExpense = touch({ id: uid(), date, category, description, amount, method, vendor, recordedBy });
+  const newExpense = touch({ id: uid(), date, category, description, amount, method, vendor, recordedBy, voided: false });
   newExpense.createdAt = newExpense.updatedAt; // fixes its place in the list for good, even if it's edited later
   state.expenses.push(newExpense);
   saveState();
@@ -1610,17 +1621,18 @@ function clearBillingFilters() {
   document.getElementById('billing-filter-period').value = 'alltime';
   renderInvoices();
 }
-function deleteExpense(id) {
-  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Only an admin can remove an expense record.'); return; }
-  if (!confirm('Delete this expense record? This cannot be undone.')) return;
-  const removedExpense = state.expenses.find(e => e.id === id);
-  state.expenses = state.expenses.filter(e => e.id !== id);
-  noteDelete('expenses', id);
-  saveState();
-  if (removedExpense) journalExpense('del', removedExpense);
-  renderExpenseTable();
-  renderSpending();
-  toast('Expense removed.');
+function voidExpense(id) {
+  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Only an administrator can void an expense record.'); return; }
+  const record = state.expenses.find(e => e.id === id);
+  if (!record || record.voided) return;
+  const reason = prompt('Enter the reason for voiding this expense record:');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('A reason is required to void an expense.'); return; }
+  if (!confirm('Void this expense? It will remain visible but will no longer count as spending.')) return;
+  record.voided = true; record.voidedAt = new Date().toISOString();
+  record.voidedBy = currentStaffInfo.name || 'Administrator'; record.voidReason = reason.trim();
+  touch(record); saveState(); journalExpense('void', record); renderSpending();
+  toast('Expense voided. The original record and audit details remain in the system.');
 }
 
 function refreshRoomSelect(selectedRoomId, checkIn, checkOut, excludeBookingId, stayType) {
@@ -2570,11 +2582,13 @@ function collectPending() {
   }));
   (state.expenses || []).filter(isPendingRec).forEach(ex => add('expenses', ex, {
     id: ex.id, date: ex.date, category: ex.category, description: ex.description, amount: ex.amount,
-    method: ex.method, vendor: ex.vendor || '', recorded_by: ex.recordedBy || '', updated_at: ensureStamp(ex),
-    created_at: stampExpenseCreated(ex).createdAt,
+    method: ex.method, vendor: ex.vendor || '', recorded_by: ex.recordedBy || '', voided: !!ex.voided,
+    voided_at: ex.voidedAt || null, voided_by: ex.voidedBy || '', void_reason: ex.voidReason || '',
+    updated_at: ensureStamp(ex), created_at: stampExpenseCreated(ex).createdAt,
   }));
   (state.deposits || []).filter(isPendingRec).forEach(d => add('deposits', d, {
     id: d.id, date: d.date, amount: d.amount, method: d.method, destination: d.destination || '', note: d.note || '',
+    voided: !!d.voided, voided_at: d.voidedAt || null, voided_by: d.voidedBy || '', void_reason: d.voidReason || '',
     updated_at: ensureStamp(d),
   }));
   (state.bookings || []).filter(isPendingRec).forEach(b => {
@@ -2784,6 +2798,7 @@ function mergeServerState(server) {
     const ex = {
       id: sr.id, date: sr.date, category: sr.category, description: sr.description, amount: sr.amount,
       method: sr.method, vendor: sr.vendor, recordedBy: sr.recorded_by || '', updatedAt: sr.updated_at,
+      voided: !!sr.voided, voidedAt: sr.voided_at || '', voidedBy: sr.voided_by || '', voidReason: sr.void_reason || '',
     };
     if (sr.created_at) ex.createdAt = sr.created_at; // an older backend without the column must not wipe ours
     return ex;
@@ -2791,7 +2806,8 @@ function mergeServerState(server) {
   state.expenses.forEach(stampExpenseCreated);
   state.deposits = state.deposits || [];
   mergeArray(state.deposits, server.deposits, sr => ({
-    id: sr.id, date: sr.date, amount: sr.amount, method: sr.method, destination: sr.destination, note: sr.note, updatedAt: sr.updated_at,
+    id: sr.id, date: sr.date, amount: sr.amount, method: sr.method, destination: sr.destination, note: sr.note,
+    voided: !!sr.voided, voidedAt: sr.voided_at || '', voidedBy: sr.voided_by || '', voidReason: sr.void_reason || '', updatedAt: sr.updated_at,
   }));
   journalCurrentExpenses();
 }
@@ -2928,13 +2944,13 @@ function exportSalaryPaymentsCSV() {
   downloadCSV(`salary-payments-${TODAY()}.csv`, headers, rows);
 }
 function exportExpensesCSV() {
-  const headers = ['Date', 'Description', 'Category', 'Vendor', 'Method', 'Amount', 'Recorded by'];
-  const rows = state.expenses.slice().sort(byNewestExpense).map(e => [e.date, e.description, e.category, e.vendor || '', e.method, e.amount, e.recordedBy || '']);
+  const headers = ['Date', 'Description', 'Category', 'Vendor', 'Method', 'Amount', 'Status', 'Recorded by', 'Voided at', 'Voided by', 'Void reason'];
+  const rows = state.expenses.slice().sort(byNewestExpense).map(e => [e.date, e.description, e.category, e.vendor || '', e.method, e.amount, e.voided ? 'VOID' : 'ACTIVE', e.recordedBy || '', e.voidedAt || '', e.voidedBy || '', e.voidReason || '']);
   downloadCSV(`expenses-${TODAY()}.csv`, headers, rows);
 }
 function exportDepositsCSV() {
-  const headers = ['Date', 'Destination', 'Method', 'Note', 'Amount'];
-  const rows = (state.deposits || []).map(d => [d.date, d.destination || '', d.method, d.note || '', d.amount]);
+  const headers = ['Date', 'Destination', 'Method', 'Note', 'Amount', 'Status', 'Voided at', 'Voided by', 'Void reason'];
+  const rows = (state.deposits || []).map(d => [d.date, d.destination || '', d.method, d.note || '', d.amount, d.voided ? 'VOID' : 'ACTIVE', d.voidedAt || '', d.voidedBy || '', d.voidReason || '']);
   downloadCSV(`deposits-${TODAY()}.csv`, headers, rows);
 }
 function exportReportCSV() {
