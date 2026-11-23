@@ -979,7 +979,7 @@ function reportDataForRange(fromStr, toStr) {
   const salaryPayments = state.salaryPayments.filter(p => p.date >= fromStr && p.date <= toStr);
   const payrollTotal = salaryPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
   const deposits = (state.deposits || []).filter(d => d.date >= fromStr && d.date <= toStr);
-  const depositedTotal = deposits.reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  const depositedTotal = deposits.filter(d => !d.voided).reduce((s, d) => s + (Number(d.amount) || 0), 0);
   const net = revenue - expensesTotal - payrollTotal - depositedTotal;
 
   return {
@@ -2975,12 +2975,12 @@ function exportReportCSV() {
     const g = x.booking ? getGuest(x.booking.guestId) : null;
     rows.push(['Payment', x.invoice.number + ' — ' + (g ? g.name : '') + ' — Room ' + (r ? r.number : ''), x.payment.amount]);
   });
-  d.expenses.forEach(e => rows.push(['Expense', e.date + ' — ' + e.description + ' (' + e.category + ')', e.amount]));
+  d.expenses.forEach(e => rows.push(['Expense ' + (e.voided ? 'VOID' : 'ACTIVE'), e.date + ' — ' + e.description + ' (' + e.category + ')' + (e.voided ? ' — void reason: ' + (e.voidReason || '') : ''), e.amount]));
   d.salaryPayments.forEach(p => {
     const e = getEmployee(p.employeeId);
     rows.push(['Salary payment', p.date + ' — ' + (e ? e.name : '') + ' (' + p.month + ')', p.amountPaid]);
   });
-  d.deposits.forEach(dep => rows.push(['Deposit', dep.date + ' — ' + (dep.destination || '') + (dep.note ? ' (' + dep.note + ')' : ''), dep.amount]));
+  d.deposits.forEach(dep => rows.push(['Deposit ' + (dep.voided ? 'VOID' : 'ACTIVE'), dep.date + ' — ' + (dep.destination || '') + (dep.note ? ' (' + dep.note + ')' : '') + (dep.voided ? ' — void reason: ' + (dep.voidReason || '') : ''), dep.amount]));
   downloadCSV(`report-${d.from}-to-${d.to}.csv`, headers, rows);
 }
 
