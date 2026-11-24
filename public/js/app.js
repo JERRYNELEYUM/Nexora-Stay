@@ -119,6 +119,7 @@ function migrateState(parsed) {
   if (!parsed.employees) parsed.employees = [];
   if (!parsed.salaryPayments) parsed.salaryPayments = [];
   parsed.salaryPayments.forEach(p => {
+    if (p && p.voided === undefined) p.voided = false;
     if (p && p.month && !/^\d{4}-\d{2}$/.test(String(p.month))) {
       const d = new Date(String(p.month) + ' 1');
       if (!Number.isNaN(d.getTime())) p.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
@@ -1141,7 +1142,7 @@ function renderReports() {
     data.salaryPayments.slice().sort((a, b) => b.date.localeCompare(a.date)).forEach(p => {
       const e = getEmployee(p.employeeId);
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${p.date}</td><td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(p.month)}</td><td>${formatMoney(p.amountPaid)}</td>`;
+      tr.innerHTML = `<td>${p.date}</td><td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(p.month)}</td><td>${formatMoney(p.amountPaid)}</td><td>${p.voided ? '<span class="badge badge-cancelled">VOID</span><div class="hint-text">' + escapeHtml(p.voidReason || 'No reason supplied') + ' · ' + escapeHtml(p.voidedBy || '—') + '</div>' : '<span class="badge badge-checked-in">Active</span>'}</td>`;
       salBody.appendChild(tr);
     });
   }
@@ -3012,7 +3013,7 @@ function exportReportCSV() {
   d.expenses.forEach(e => rows.push(['Expense ' + (e.voided ? 'VOID' : 'ACTIVE'), e.date + ' — ' + e.description + ' (' + e.category + ')' + (e.voided ? ' — void reason: ' + (e.voidReason || '') : ''), e.amount]));
   d.salaryPayments.forEach(p => {
     const e = getEmployee(p.employeeId);
-    rows.push(['Salary payment', p.date + ' — ' + (e ? e.name : '') + ' (' + p.month + ')', p.amountPaid]);
+    rows.push(['Salary payment ' + (p.voided ? 'VOID' : 'ACTIVE'), p.date + ' — ' + (e ? e.name : '') + ' (' + p.month + ')' + (p.voided ? ' — void reason: ' + (p.voidReason || '') + ' — voided by: ' + (p.voidedBy || '') + ' — at: ' + (p.voidedAt || '') : ''), p.amountPaid]);
   });
   d.deposits.forEach(dep => rows.push(['Deposit ' + (dep.voided ? 'VOID' : 'ACTIVE'), dep.date + ' — ' + (dep.destination || '') + (dep.note ? ' (' + dep.note + ')' : '') + (dep.voided ? ' — void reason: ' + (dep.voidReason || '') : ''), dep.amount]));
   downloadCSV(`report-${d.from}-to-${d.to}.csv`, headers, rows);
