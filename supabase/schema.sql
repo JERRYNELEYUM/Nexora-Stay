@@ -172,8 +172,16 @@ create table if not exists salary_payments (
   date date not null,
   method text not null default 'Cash',
   note text default '',
+  voided boolean not null default false,
+  voided_at timestamptz,
+  voided_by text default '',
+  void_reason text default '',
   updated_at timestamptz not null default now()
 );
+alter table salary_payments add column if not exists voided boolean not null default false;
+alter table salary_payments add column if not exists voided_at timestamptz;
+alter table salary_payments add column if not exists voided_by text default '';
+alter table salary_payments add column if not exists void_reason text default '';
 
 -- ---------- spending: general hotel expenses ----------
 create table if not exists expenses (
