@@ -120,11 +120,11 @@ td{padding:9px 6px;border-bottom:1px solid var(--line);}
     <div class="two-col">
       <div class="panel">
         <div class="panel-head"><h2>Expenses in this period</h2></div>
-        <table id="t-expenses"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th></tr></thead><tbody></tbody></table>
+        <table id="t-expenses"><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Status / audit</th></tr></thead><tbody></tbody></table>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Salary payments in this period</h2></div>
-        <table id="t-salary"><thead><tr><th>Date</th><th>Employee</th><th>Month</th><th>Amount</th></tr></thead><tbody></tbody></table>
+        <table id="t-salary"><thead><tr><th>Date</th><th>Employee</th><th>Month</th><th>Amount</th><th>Status / audit</th></tr></thead><tbody></tbody></table>
       </div>
     </div>
 
@@ -298,7 +298,8 @@ function renderReport(data) {
   } else {
     data.expenses.forEach(function (e) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + e.date + '</td><td>' + escapeHtml(e.description) + '</td><td>' + escapeHtml(e.category) + '</td><td>' + formatMoney(e.amount) + '</td>';
+      var audit = e.voided ? 'VOID · ' + escapeHtml(e.voidReason || 'No reason') + ' · ' + escapeHtml(e.voidedBy || '—') + ' · ' + escapeHtml(e.voidedAt || '—') : 'Active';
+      tr.innerHTML = '<td>' + e.date + '</td><td>' + escapeHtml(e.description) + '</td><td>' + escapeHtml(e.category) + '</td><td>' + formatMoney(e.amount) + '</td><td>' + audit + '</td>';
       expBody.appendChild(tr);
     });
   }
@@ -310,7 +311,8 @@ function renderReport(data) {
   } else {
     data.salaryPayments.forEach(function (p) {
       var tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + p.date + '</td><td>' + escapeHtml(p.employeeName || '\u2014') + '</td><td>' + escapeHtml(p.month) + '</td><td>' + formatMoney(p.amount) + '</td>';
+      var audit = p.voided ? 'VOID · ' + escapeHtml(p.voidReason || 'No reason') + ' · ' + escapeHtml(p.voidedBy || '—') + ' · ' + escapeHtml(p.voidedAt || '—') : 'Active';
+      tr.innerHTML = '<td>' + p.date + '</td><td>' + escapeHtml(p.employeeName || '\u2014') + '</td><td>' + escapeHtml(p.month) + '</td><td>' + formatMoney(p.amount) + '</td><td>' + audit + '</td>';
       salBody.appendChild(tr);
     });
   }
@@ -419,9 +421,9 @@ function exportReport() {
   ];
   Object.keys(d.byMethod || {}).forEach(function (m) { rows.push(['By payment method', m, d.byMethod[m].amount]); });
   (d.payments || []).forEach(function (p) { rows.push(['Payment', (p.invoiceNumber || '') + ' \u2014 ' + (p.guestName || '') + ' \u2014 Room ' + (p.roomNumber || ''), p.amount]); });
-  (d.expenses || []).forEach(function (e) { rows.push(['Expense', e.date + ' \u2014 ' + e.description + ' (' + e.category + ')', e.amount]); });
-  (d.salaryPayments || []).forEach(function (p) { rows.push(['Salary payment', p.date + ' \u2014 ' + (p.employeeName || '') + ' (' + p.month + ')', p.amount]); });
-  (d.deposits || []).forEach(function (dep) { rows.push(['Deposit', dep.date + ' \u2014 ' + (dep.destination || ''), dep.amount]); });
+  (d.expenses || []).forEach(function (e) { rows.push(['Expense ' + (e.voided ? 'VOID' : 'ACTIVE'), e.date + ' \u2014 ' + e.description + ' (' + e.category + ')' + (e.voided ? ' · ' + (e.voidReason || '') + ' · ' + (e.voidedBy || '') + ' · ' + (e.voidedAt || '') : ''), e.amount]); });
+  (d.salaryPayments || []).forEach(function (p) { rows.push(['Salary payment ' + (p.voided ? 'VOID' : 'ACTIVE'), p.date + ' \u2014 ' + (p.employeeName || '') + ' (' + p.month + ')' + (p.voided ? ' · ' + (p.voidReason || '') + ' · ' + (p.voidedBy || '') + ' · ' + (p.voidedAt || '') : ''), p.amount]); });
+  (d.deposits || []).forEach(function (dep) { rows.push(['Deposit ' + (dep.voided ? 'VOID' : 'ACTIVE'), dep.date + ' \u2014 ' + (dep.destination || '') + (dep.voided ? ' · ' + (dep.voidReason || '') + ' · ' + (dep.voidedBy || '') + ' · ' + (dep.voidedAt || '') : ''), dep.amount]); });
   downloadCSV('owner-report-' + lastRange.fromLocal + '-to-' + lastRange.toLocal + '.csv', headers, rows);
 }
 
