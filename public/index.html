@@ -412,6 +412,7 @@
 
       <div class="panel">
         <div class="panel-head"><h2>Recent salary payments</h2><button class="btn btn-ghost" id="btn-export-salary-payments">Export CSV</button></div>
+        <div class="filter-row no-print"><select id="salary-payment-filter-status"><option value="">All payment statuses</option><option value="active">Active</option><option value="voided">Voided</option></select></div>
         <div class="table-wrap"><table class="table" id="table-salary-payments"><thead>
           <tr><th>Employee</th><th>Month</th><th>Due</th><th>Paid</th><th>Balance after payment</th><th>Method</th><th>Date</th><th></th></tr>
         </thead><tbody></tbody></table></div>
@@ -461,6 +462,7 @@
           <div class="filter-row no-print">
             <input type="search" id="expense-search" placeholder="Search description or vendor...">
             <select id="expense-filter-category"><option value="">All categories</option></select>
+            <select id="expense-filter-status"><option value="">All payment statuses</option><option value="active">Active</option><option value="voided">Voided</option></select>
             <select id="expense-filter-period">
               <option value="alltime">All Time</option>
               <option value="daily">Daily</option>
@@ -485,6 +487,7 @@
             </div>
           </div>
           <p class="hint-text no-print">When cash is taken out of the till and deposited at the bank (or moved to mobile money), record it here — it's tracked separately from expenses since it isn't money spent, but it does reduce cash on hand and shows up as a deduction in Reports.</p>
+          <div class="filter-row no-print"><select id="deposit-filter-status"><option value="">All payment statuses</option><option value="active">Active</option><option value="voided">Voided</option></select></div>
           <div class="table-wrap"><table class="table" id="table-deposits"><thead>
             <tr><th>Date</th><th>Destination</th><th>Method</th><th>Note</th><th>Amount</th><th>Status</th><th class="no-print"></th></tr>
         </thead><tbody></tbody></table></div>
