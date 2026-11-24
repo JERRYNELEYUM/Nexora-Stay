@@ -977,7 +977,7 @@ function reportDataForRange(fromStr, toStr) {
   const expenses = state.expenses.filter(e => e.date >= fromStr && e.date <= toStr);
   const expensesTotal = expenses.filter(e => !e.voided).reduce((s, e) => s + (Number(e.amount) || 0), 0);
   const salaryPayments = state.salaryPayments.filter(p => p.date >= fromStr && p.date <= toStr);
-  const payrollTotal = salaryPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
+  const payrollTotal = salaryPayments.filter(p => !p.voided).reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
   const deposits = (state.deposits || []).filter(d => d.date >= fromStr && d.date <= toStr);
   const depositedTotal = deposits.filter(d => !d.voided).reduce((s, d) => s + (Number(d.amount) || 0), 0);
   const net = revenue - expensesTotal - payrollTotal - depositedTotal;
@@ -1194,14 +1194,14 @@ function payrollMonthLabel(key) {
 function payrollStatus(employeeId, month) {
   const employee = getEmployee(employeeId);
   const due = employee ? Number(employee.monthlySalary) || 0 : 0;
-  const paid = state.salaryPayments.filter(p => p.employeeId === employeeId && p.month === month)
+  const paid = state.salaryPayments.filter(p => p.employeeId === employeeId && p.month === month && !p.voided)
     .reduce((sum, p) => sum + (Number(p.amountPaid) || 0), 0);
   return { due, paid, remaining: Math.max(0, due - paid) };
 }
 function renderPayroll() {
   const active = state.employees.filter(e => e.status !== 'left');
   const monthlyTotal = active.reduce((s, e) => s + (Number(e.monthlySalary) || 0), 0);
-  const paidAllTime = state.salaryPayments.reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
+  const paidAllTime = state.salaryPayments.filter(p => !p.voided).reduce((s, p) => s + (Number(p.amountPaid) || 0), 0);
   const month = payrollMonthKey();
   document.getElementById('pr-active-count').textContent = active.length;
   document.getElementById('pr-monthly-total').textContent = formatMoney(monthlyTotal);
@@ -1228,7 +1228,9 @@ function renderPayroll() {
   body.querySelectorAll('[data-edit-employee]').forEach(btn => btn.onclick = () => openEmployeeModal(btn.dataset.editEmployee));
   const payBody = document.querySelector('#table-salary-payments tbody');
   payBody.innerHTML = '';
-  const recent = state.salaryPayments.slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 20);
+  const salaryStatusFilter = document.getElementById('salary-payment-filter-status')?.value || '';
+  const recent = state.salaryPayments.filter(p => !salaryStatusFilter || (salaryStatusFilter === 'voided' ? !!p.voided : !p.voided))
+    .slice().sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 50);
   if (!recent.length) {
     payBody.innerHTML = `<tr class="muted-row"><td colspan="7">No salary payments recorded yet.</td></tr>`;
   } else {
@@ -1239,11 +1241,34 @@ function renderPayroll() {
       tr.innerHTML = `<td>${escapeHtml(e ? e.name : '—')}</td><td>${escapeHtml(payrollMonthLabel(p.month))}${p.isAdvance ? ' (Advance)' : ''}</td>
         <td>${formatMoney(p.amountDue)}</td><td>${formatMoney(p.amountPaid)}</td>
         <td>${formatMoney(ms.remaining)}</td><td>${escapeHtml(p.method)}</td><td>${escapeHtml(p.date || '—')}</td>
-        <td><button class="link-btn" data-view-salary="${p.id}">View / Print</button></td>`;
+        <td>${p.voided ? '<span class="badge badge-cancelled">VOID</span>' : '<span class="badge badge-checked-in">Active</span>'}
+          <button class="link-btn" data-view-salary="${p.id}">View / Print</button>
+          ${currentStaffInfo && currentStaffInfo.role === 'admin' && !p.voided ? `<button class="icon-btn" data-void-salary="${p.id}">Void</button>` : ''}
+          ${p.voided ? '<div class="hint-text">Voided by ' + escapeHtml(p.voidedBy || '—') + ' · ' + escapeHtml(p.voidedAt || '—') + '<br>' + escapeHtml(p.voidReason || 'No reason supplied') + '</div>' : ''}
+        </td>`;
       payBody.appendChild(tr);
     });
   }
   payBody.querySelectorAll('[data-view-salary]').forEach(btn => btn.onclick = () => viewSalaryPayment(btn.dataset.viewSalary));
+  payBody.querySelectorAll('[data-void-salary]').forEach(btn => btn.onclick = () => voidSalaryPayment(btn.dataset.voidSalary));
+}
+
+function voidSalaryPayment(id) {
+  if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Only an administrator can void a salary payment.'); return; }
+  const record = state.salaryPayments.find(p => p.id === id);
+  if (!record || record.voided) return;
+  const reason = prompt('Enter the reason for voiding this salary payment:');
+  if (reason === null) return;
+  if (!reason.trim()) { toast('A reason is required to void a salary payment.'); return; }
+  if (!confirm('Void this salary payment? It will remain in history but will no longer count as salary paid.')) return;
+  record.voided = true;
+  record.voidedAt = new Date().toISOString();
+  record.voidedBy = currentStaffInfo.name || 'Administrator';
+  record.voidReason = reason.trim();
+  touch(record);
+  saveState();
+  renderPayroll();
+  toast('Salary payment voided. The record and audit details remain in the system.');
 }
 
 function openEmployeeModal(employeeId) {
@@ -1369,13 +1394,15 @@ function viewSalaryPayment(paymentId) {
   const methodLabels = { 'MTN Mobile Money': 'MTN MoMo', 'Orange Money': 'Orange Money', 'Bank transfer': 'Bank Transfer', cash: 'Cash', momo: 'MTN MoMo', om: 'Orange Money', bank: 'Bank Transfer' };
   document.getElementById('salary-slip-content').innerHTML = '<div class="invoice">' +
     '<div class="invoice-head"><h2>' + escapeHtml(state.hotel.name) + '</h2><div>' + escapeHtml(state.hotel.address || '') + '</div><div>' + escapeHtml(state.hotel.phone || '') + '</div></div>' +
+    (p.voided ? '<div style="border:2px solid var(--occupied);color:var(--occupied);display:inline-block;padding:5px 14px;font-weight:800;letter-spacing:2px;margin:8px 0;">VOID</div>' : '') +
     '<h3 style="text-align:center">SALARY PAYMENT SLIP' + (p.isAdvance ? ' (ADVANCE)' : '') + '</h3>' +
     '<p>Reference: ' + escapeHtml(p.id) + '</p><p>Employee: ' + escapeHtml(employee ? employee.name : '—') + '</p>' +
     '<p>Position: ' + escapeHtml(employee ? employee.role : '—') + '</p><p>Month: ' + escapeHtml(payrollMonthLabel(p.month)) + '</p>' +
     '<p>Date paid: ' + escapeHtml(p.date || '—') + '</p><hr><p>Monthly salary (due): ' + formatMoney(p.amountDue) + '</p>' +
-    '<p><strong>Amount paid: ' + formatMoney(p.amountPaid) + ' ' + escapeHtml(state.hotel.currency || 'FCFA') + '</strong></p>' +
+    '<p><strong>' + (p.voided ? 'Original amount (voided): ' : 'Amount paid: ') + formatMoney(p.amountPaid) + ' ' + escapeHtml(state.hotel.currency || 'FCFA') + '</strong></p>' +
     '<p>Balance remaining: ' + formatMoney(ms.remaining) + '</p><p>Payment method: ' + escapeHtml(methodLabels[p.method] || p.method || '—') + '</p>' +
-    (p.note ? '<p>Note: ' + escapeHtml(p.note) + '</p>' : '') + '<p>Recorded by: ' + escapeHtml(p.recordedBy || '—') + '</p></div>';
+    (p.note ? '<p>Note: ' + escapeHtml(p.note) + '</p>' : '') + '<p>Recorded by: ' + escapeHtml(p.recordedBy || '—') + '</p>' +
+    (p.voided ? '<p>Voided by: ' + escapeHtml(p.voidedBy || '—') + '</p><p>Voided at: ' + escapeHtml(p.voidedAt || '—') + '</p><p>Void reason: ' + escapeHtml(p.voidReason || '—') + '</p>' : '') + '</div>';
   modal.classList.remove('hidden');
 }
 
@@ -1408,7 +1435,9 @@ function renderSpending() {
 function renderDepositsTable() {
   const body = document.querySelector('#table-deposits tbody');
   body.innerHTML = '';
-  const list = (state.deposits || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  const depositStatus = document.getElementById('deposit-filter-status').value;
+  const list = (state.deposits || []).filter(d => !depositStatus || (depositStatus === 'voided' ? !!d.voided : !d.voided))
+    .slice().sort((a, b) => b.date.localeCompare(a.date));
   if (!list.length) {
     body.innerHTML = `<tr class="muted-row"><td colspan="7">No deposits recorded yet.</td></tr>`;
     return;
@@ -1469,11 +1498,14 @@ function voidDeposit(id) {
 function renderExpenseTable() {
   const search = (document.getElementById('expense-search').value || '').toLowerCase();
   const category = document.getElementById('expense-filter-category').value;
+  const status = document.getElementById('expense-filter-status').value;
   const range = getPeriodFilterRange('expense-filter-period', 'expense-filter-date');
   const body = document.querySelector('#table-expenses tbody');
   body.innerHTML = '';
 
   let list = state.expenses.slice().sort(byNewestExpense); // newest recorded on top
+  if (status === 'active') list = list.filter(e => !e.voided);
+  else if (status === 'voided') list = list.filter(e => !!e.voided);
   if (category) list = list.filter(e => e.category === category);
   if (range) list = list.filter(e => e.date >= range.from && e.date <= range.to);
   if (search) {
@@ -2578,7 +2610,8 @@ function collectPending() {
   }));
   (state.salaryPayments || []).filter(isPendingRec).forEach(p => add('salaryPayments', p, {
     id: p.id, employee_id: p.employeeId, month: p.month, amount_due: p.amountDue, amount_paid: p.amountPaid,
-    date: p.date, method: p.method, note: p.note || '', updated_at: ensureStamp(p),
+    date: p.date, method: p.method, note: p.note || '', voided: !!p.voided, voided_at: p.voidedAt || null,
+    voided_by: p.voidedBy || '', void_reason: p.voidReason || '', updated_at: ensureStamp(p),
   }));
   (state.expenses || []).filter(isPendingRec).forEach(ex => add('expenses', ex, {
     id: ex.id, date: ex.date, category: ex.category, description: ex.description, amount: ex.amount,
@@ -2791,7 +2824,8 @@ function mergeServerState(server) {
   state.salaryPayments = state.salaryPayments || [];
   mergeArray(state.salaryPayments, server.salaryPayments, sr => ({
     id: sr.id, employeeId: sr.employee_id, month: sr.month, amountDue: sr.amount_due, amountPaid: sr.amount_paid,
-    date: sr.date, method: sr.method, note: sr.note, updatedAt: sr.updated_at,
+    date: sr.date, method: sr.method, note: sr.note, voided: !!sr.voided, voidedAt: sr.voided_at || '',
+    voidedBy: sr.voided_by || '', voidReason: sr.void_reason || '', updatedAt: sr.updated_at,
   }));
   state.expenses = state.expenses || [];
   mergeArray(state.expenses, server.expenses, sr => {
@@ -2936,10 +2970,10 @@ function exportEmployeesCSV() {
 }
 function exportSalaryPaymentsCSV() {
   if (!currentStaffInfo || currentStaffInfo.role !== 'admin') { toast('Salary payment details are available to administrators only.'); return; }
-  const headers = ['Employee', 'Month', 'Amount due', 'Amount paid', 'Method', 'Date', 'Note'];
+  const headers = ['Employee', 'Month', 'Amount due', 'Amount paid', 'Method', 'Date', 'Note', 'Status', 'Voided at', 'Voided by', 'Void reason'];
   const rows = state.salaryPayments.map(p => {
     const e = getEmployee(p.employeeId);
-    return [e ? e.name : '', p.month, p.amountDue, p.amountPaid, p.method, p.date, p.note || ''];
+    return [e ? e.name : '', p.month, p.amountDue, p.amountPaid, p.method, p.date, p.note || '', p.voided ? 'VOID' : 'ACTIVE', p.voidedAt || '', p.voidedBy || '', p.voidReason || ''];
   });
   downloadCSV(`salary-payments-${TODAY()}.csv`, headers, rows);
 }
@@ -3097,6 +3131,9 @@ function init() {
   });
   document.getElementById('expense-search').addEventListener('input', renderExpenseTable);
   document.getElementById('expense-filter-category').addEventListener('change', renderExpenseTable);
+  document.getElementById('expense-filter-status').addEventListener('change', renderExpenseTable);
+  document.getElementById('deposit-filter-status').addEventListener('change', renderDepositsTable);
+  document.getElementById('salary-payment-filter-status').addEventListener('change', renderPayroll);
   document.getElementById('expense-filter-period').addEventListener('change', renderExpenseTable);
   document.getElementById('expense-filter-date').addEventListener('change', renderExpenseTable);
 
