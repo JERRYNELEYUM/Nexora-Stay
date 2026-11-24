@@ -110,9 +110,9 @@ exports.handler = async (event) => {
   const employeesById = {};
   (employeesRes.data || []).forEach(e => { employeesById[e.id] = e; });
 
-  const expensesTotal = (expensesRes.data || []).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  const payrollTotal = (salaryRes.data || []).reduce((s, p) => s + (Number(p.amount_paid) || 0), 0);
-  const depositedTotal = (depositsRes.data || []).reduce((s, d) => s + (Number(d.amount) || 0), 0);
+  const expensesTotal = (expensesRes.data || []).filter(e => !e.voided).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const payrollTotal = (salaryRes.data || []).filter(p => !p.voided).reduce((s, p) => s + (Number(p.amount_paid) || 0), 0);
+  const depositedTotal = (depositsRes.data || []).filter(d => !d.voided).reduce((s, d) => s + (Number(d.amount) || 0), 0);
   const net = revenue - expensesTotal - payrollTotal - depositedTotal;
 
   return json(200, {
@@ -130,11 +130,11 @@ exports.handler = async (event) => {
     expenses: (expensesRes.data || []).slice().sort((a, b) =>
       ((Date.parse(b.created_at || b.updated_at) || 0) - (Date.parse(a.created_at || a.updated_at) || 0)) ||
       String(b.date || '').localeCompare(String(a.date || ''))
-    ).map(e => ({ date: e.date, description: e.description, category: e.category, amount: e.amount })),
+    ).map(e => ({ date: e.date, description: e.description, category: e.category, amount: e.amount, voided: !!e.voided, voidedAt: e.voided_at || null, voidedBy: e.voided_by || '', voidReason: e.void_reason || '' })),
     payrollTotal: payrollTotal,
-    salaryPayments: (salaryRes.data || []).map(p => ({ date: p.date, month: p.month, amount: p.amount_paid, employeeName: employeesById[p.employee_id] ? employeesById[p.employee_id].name : null })),
+    salaryPayments: (salaryRes.data || []).map(p => ({ date: p.date, month: p.month, amount: p.amount_paid, employeeName: employeesById[p.employee_id] ? employeesById[p.employee_id].name : null, voided: !!p.voided, voidedAt: p.voided_at || null, voidedBy: p.voided_by || '', voidReason: p.void_reason || '' })),
     depositedTotal: depositedTotal,
-    deposits: (depositsRes.data || []).map(d => ({ date: d.date, destination: d.destination, amount: d.amount })),
+    deposits: (depositsRes.data || []).map(d => ({ date: d.date, destination: d.destination, amount: d.amount, voided: !!d.voided, voidedAt: d.voided_at || null, voidedBy: d.voided_by || '', voidReason: d.void_reason || '' })),
     net: net,
   });
 };
