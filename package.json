@@ -8,6 +8,6 @@
     "playwright": "^1.62.1"
   },
   "scripts": {
-    "test": "node test/run.js && node test/run_report.js && node test/run_sync_hardening.js && node test/run_datasafety.js"
+    "test": "node test/run.js && node test/run_report.js && node test/run_sync_hardening.js && node test/run_datasafety.js && node --experimental-test-module-mocks test/cloudflare-sync-smoke.mjs && node --experimental-test-module-mocks test/cloudflare-push-smoke.mjs && node --experimental-test-module-mocks test/cloudflare-report-smoke.mjs"
   }
 }

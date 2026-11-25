@@ -101,6 +101,13 @@ class FakeQuery {
     }
     if (this._range) rows = rows.slice(this._range[0], this._range[1] + 1);
     if (this._limit != null) rows = rows.slice(0, this._limit);
+    if (this._cols) {
+      rows = rows.map(row => Object.fromEntries(
+        this._cols
+          .filter(col => Object.prototype.hasOwnProperty.call(row, col))
+          .map(col => [col, row[col]])
+      ));
+    }
     if (this._single) {
       if (!rows.length) return { data: null, error: { message: 'No rows found', code: 'PGRST116' } };
       return { data: rows[0], error: null };
