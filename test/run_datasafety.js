@@ -54,15 +54,21 @@ server.listen(Number(process.argv[3]) || 8961, async () => {
       const ex = await storedExpenses(B);
       check('both expenses exist in saved data', ex.includes('EXP-ONLY-A') && ex.includes('EXP-ONLY-B'), ex); }
 
-    console.log('\n[R1d] A deliberate delete stays deleted (merging must not undo it)');
-    { const ctx = await browser.newContext(); const B = await ctx.newPage(), A = await ctx.newPage(); A.on('dialog', d => d.accept());
+       console.log('\n[R1d] A voided expense stays voided when another window saves');
+    { const ctx = await browser.newContext(); const B = await ctx.newPage(), A = await ctx.newPage();
+      A.on('dialog', d => d.type() === 'prompt' ? d.accept('Duplicate entry') : d.accept());
       await B.goto(URL); await unlock(B); await A.goto(URL); await unlock(A);
       await addExpense(A, 'KEEP-ME', 100); await addExpense(A, 'DELETE-ME', 200);
       await goSpending(A);
-      await A.click('#table-expenses tr:has-text("DELETE-ME") [data-del-expense]'); await A.waitForTimeout(250);
+      await A.click('#table-expenses tr:has-text("DELETE-ME") [data-void-expense]');
+      await A.waitForTimeout(250);
       await addBooking(B, 'Another guest');
-      const ex = await storedExpenses(B);
-      check('deleted expense did not come back; the other one is kept', !ex.includes('DELETE-ME') && ex.includes('KEEP-ME'), ex); }
+      const ex = await B.evaluate(k => JSON.parse(localStorage.getItem(k)).expenses || [], K);
+      const voided = ex.find(e => e.description === 'DELETE-ME');
+      const kept = ex.find(e => e.description === 'KEEP-ME');
+      check('voided expense remains saved with its audit reason, while the other stays active',
+        !!voided && voided.voided === true && voided.voidReason === 'Duplicate entry' &&
+        !!kept && !kept.voided, ex); }
 
     console.log('\n[R1e] TYPING an expense in one window while another window saves');
     { const ctx = await browser.newContext(); const B = await ctx.newPage(), A = await ctx.newPage();
@@ -118,24 +124,55 @@ server.listen(Number(process.argv[3]) || 8961, async () => {
       check('once storage works again the bar disappears by itself', (await Z.$eval('#global-alerts', e => e.textContent.trim())) === '');
       check('and nothing recorded meanwhile was lost', (await storedExpenses(Z)).includes('EXPENSE-WHEN-FULL')); }
 
-    console.log('\n[R5] SAFETY LOG — an expense that vanishes for ANY reason can be restored');
-    { const ctx = await browser.newContext(); const P = await ctx.newPage(); P.on('dialog', d => d.accept()); await P.goto(URL); await unlock(P);
-      await addExpense(P, 'LOG-1', 1500, '2026-09-20'); await addExpense(P, 'LOG-2', 2500, '2026-09-21'); await addExpense(P, 'DELETED-ON-PURPOSE', 99);
-      await goSpending(P); await P.click('#table-expenses tr:has-text("DELETED-ON-PURPOSE") [data-del-expense]'); await P.waitForTimeout(250);
-      // simulate any kind of loss: restore an OLDER backup that does not contain the expenses
-      const older = await P.evaluate(() => { const c = JSON.parse(JSON.stringify(state)); c.expenses = []; return JSON.stringify(c); });
-      fs.writeFileSync(OLDER, older);
-      await P.click('.nav-btn[data-view="settings"]'); await P.setInputFiles('#btn-import', OLDER); await P.waitForTimeout(500);
-      check('import warns that expenses recorded after that backup are missing', /missing/.test(await P.$eval('#toast', e => e.textContent)), await P.$eval('#toast', e => e.textContent));
+        console.log('\n[R5] SAFETY LOG — missing expenses are restored, including voided records');
+    { const ctx = await browser.newContext(); const P = await ctx.newPage();
+      P.on('dialog', d => d.type() === 'prompt' ? d.accept('Intentional test void') : d.accept());
+      await P.goto(URL); await unlock(P);
+      await addExpense(P, 'LOG-1', 1500, '2026-09-20');
+      await addExpense(P, 'LOG-2', 2500, '2026-09-21');
+      await addExpense(P, 'DELETED-ON-PURPOSE', 99);
       await goSpending(P);
-      check('Spending shows a banner: 2 expense records went missing', /2 expense records went missing/.test(await P.$eval('#expense-recovery', e => e.textContent)));
-      check('the expense deleted on purpose is NOT reported as missing', !/DELETED-ON-PURPOSE/.test(await P.$eval('#expense-recovery', e => e.textContent)));
-      await P.click('#btn-restore-expenses'); await P.waitForTimeout(300);
-      const ex = await storedExpenses(P);
-      check('Restore brings both back (and only those)', ex.includes('LOG-1') && ex.includes('LOG-2') && !ex.includes('DELETED-ON-PURPOSE') && ex.length === 2, ex);
-      check('the banner disappears afterwards', (await P.getAttribute('#expense-recovery', 'class')).includes('hidden'));
+      await P.click('#table-expenses tr:has-text("DELETED-ON-PURPOSE") [data-void-expense]');
+      await P.waitForTimeout(250);
+
+      // Simulate data loss by importing an older backup without these expenses.
+      const older = await P.evaluate(() => {
+        const c = JSON.parse(JSON.stringify(state));
+        c.expenses = [];
+        return JSON.stringify(c);
+      });
+      fs.writeFileSync(OLDER, older);
+      await P.click('.nav-btn[data-view="settings"]');
+      await P.setInputFiles('#btn-import', OLDER);
+      await P.waitForTimeout(500);
+
+      check('import warns that expenses recorded after that backup are missing',
+        /missing/.test(await P.$eval('#toast', e => e.textContent)),
+        await P.$eval('#toast', e => e.textContent));
+
+      await goSpending(P);
+      check('Spending shows a banner: 3 expense records went missing',
+        /3 expense records went missing/.test(await P.$eval('#expense-recovery', e => e.textContent)));
+
+      await P.click('#btn-restore-expenses');
+      await P.waitForTimeout(300);
+      const ex = await P.evaluate(k => JSON.parse(localStorage.getItem(k)).expenses || [], K);
+      const voided = ex.find(e => e.description === 'DELETED-ON-PURPOSE');
+
+      check('Restore brings back all three records', ex.length === 3 &&
+        ex.some(e => e.description === 'LOG-1') &&
+        ex.some(e => e.description === 'LOG-2') && !!voided, ex);
+
+      check('the restored voided record retains its reason and void status',
+        !!voided && voided.voided === true &&
+        voided.voidReason === 'Intentional test void', voided);
+
+      check('the banner disappears afterwards',
+        (await P.getAttribute('#expense-recovery', 'class')).includes('hidden'));
+
       const row = await P.$eval('#table-expenses tr:has-text("LOG-1")', e => e.textContent);
-      check('restored records keep their original date and amount', /2026-09-20/.test(row) && /1,500/.test(row), row); }
+      check('restored records keep their original date and amount',
+        /2026-09-20/.test(row) && /1,500/.test(row), row); }
 
     console.log('\n[R6] "Where is my data?" help in Settings');
     { const ctx = await browser.newContext(); const P = await ctx.newPage(); await P.goto(URL); await unlock(P); await P.click('.nav-btn[data-view="settings"]'); await P.waitForTimeout(200);
