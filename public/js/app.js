@@ -2322,7 +2322,7 @@ document.getElementById('form-sync').addEventListener('submit', async (e) => {
   const norm = normalizeBackendUrl(document.getElementById('sync-backend-url').value);
   const key = document.getElementById('sync-key-input').value.trim();
   if (norm.error) { showSyncTestResult('bad', norm.error); return; }
-  if (!key) { showSyncTestResult('bad', 'Enter the sync key (the SYNC_KEY you set on Netlify).'); return; }
+  if (!key) { showSyncTestResult('bad', 'Enter the sync key (the SYNC_KEY configured in Cloudflare Pages Production secrets).'); return; }
   document.getElementById('sync-backend-url').value = norm.url;
   state.syncConfig = { backendUrl: norm.url, syncKey: key };
   syncNextAllowedAt = 0; syncFailures = 0; syncLastError = null; syncNotice = '';
@@ -2488,36 +2488,25 @@ function persistLocal() {
   return writeStateToStorage(state);
 }
 
-/* Turns whatever was pasted into the Backend URL box into the address that
-   actually works. The most common mix-up is pasting the Netlify DASHBOARD link
-   (app.netlify.com/projects/<site>/…) instead of the site's own address. */
+/* Normalizes the Cloudflare Pages backend base URL. */
 function normalizeBackendUrl(raw) {
   let text = String(raw || '').trim();
   if (!text) return { url: '' };
   if (!/^https?:\/\//i.test(text)) text = 'https://' + text;
   let u;
   try { u = new URL(text); }
-  catch (e) { return { url: text, error: 'That doesn\u2019t look like a web address. It should look like https://your-site.netlify.app/.netlify/functions' }; }
+  catch (e) { return { url: text, error: 'Enter a valid backend address, such as https://nexora-stay.pages.dev' }; }
   if (u.hostname === 'app.netlify.com') {
-    const m = u.pathname.match(/\/(?:projects|sites)\/([^\/]+)/);
-    if (m) {
-      const fixed = 'https://' + m[1] + '.netlify.app/.netlify/functions';
-      return { url: fixed, corrected: true, note: 'That was the link to your Netlify dashboard, not to your site, so I changed it to ' + fixed + '.' };
-    }
-    return { url: text, error: 'That\u2019s a Netlify dashboard link. Use your site\u2019s own address instead: https://<your-site-name>.netlify.app/.netlify/functions' };
+    return { url: text, error: 'The old Netlify dashboard address is not a backend address. Enter https://nexora-stay.pages.dev instead.' };
   }
   let path = u.pathname.replace(/\/+$/, '');
-  const at = path.indexOf('/.netlify/functions');
-  if (at >= 0) {
-    const base = path.slice(0, at) + '/.netlify/functions';
-    return { url: u.origin + base, corrected: base !== path, note: base !== path ? 'I trimmed the Backend URL to end at /.netlify/functions.' : '' };
-  }
-  if (path === '') return { url: u.origin + '/.netlify/functions', corrected: true, note: 'I added /.netlify/functions to the end of the Backend URL.' };
-  return { url: u.origin + path };
+  path = path.replace(/\/(?:sync|push|report)$/i, '');
+  path = path.replace(/\/\.netlify\/functions$/i, '');
+  return { url: u.origin + path, corrected: path !== u.pathname.replace(/\/+$/, '') };
 }
 
 function backendUnreachableHint(base) {
-  if (/\/\/app\.netlify\.com/i.test(base)) return 'That\u2019s the Netlify dashboard address \u2014 open Settings \u2192 Cloud sync and press Save to correct it.';
+  if (/\/\/app\.netlify\.com/i.test(base)) return 'That is an old Netlify dashboard address. Enter https://nexora-stay.pages.dev in Settings → Cloud sync.';
   return 'Check the Backend URL in Settings \u2192 Cloud sync, and your internet connection.';
 }
 
@@ -2544,12 +2533,12 @@ async function syncRequest(path, method, body) {
   clearTimeout(timer);
   let data = null;
   try { data = await res.json(); } catch (e) { /* not JSON */ }
-  if (res.status === 401) throw new SyncError('The backend rejected the sync key.', 'Check that the Sync key in Settings \u2192 Cloud sync is exactly the SYNC_KEY set on Netlify.', 401);
+  if (res.status === 401) throw new SyncError('The backend rejected the sync key.', 'Check that the Sync key in Settings → Cloud sync matches the SYNC_KEY configured in Cloudflare Pages Production secrets.', 401);
   if (!data || typeof data !== 'object') {
-    throw new SyncError('That address answered with a web page, not the sync service.', 'The Backend URL should end in /.netlify/functions, and the backend must be deployed on that site.', res.status);
+    throw new SyncError('That address answered with a web page, not the sync service.', 'The Backend URL should be https://nexora-stay.pages.dev, and the Cloudflare Pages backend must be deployed.', res.status);
   }
   if (!res.ok) {
-    throw new SyncError(data.error || ('The backend returned an error (' + res.status + ').'), res.status >= 500 ? 'If this keeps happening, check the function logs in Netlify.' : '', res.status);
+    throw new SyncError(data.error || ('The backend returned an error (' + res.status + ').'), res.status >= 500 ? 'If this keeps happening, check the Cloudflare Pages Functions logs.' : '', res.status);
   }
   return data;
 }

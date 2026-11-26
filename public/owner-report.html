@@ -65,7 +65,7 @@ td{padding:9px 6px;border-bottom:1px solid var(--line);}
     <div class="panel-head"><h2>Connect to your hotel's backend</h2></div>
     <p class="status-line">Enter the same backend URL and sync key used to set up cloud sync (Settings → Cloud sync in the main app). This page only reads data — it can't change any bookings or settings.</p>
     <div class="setup-form">
-      <label class="span-2">Backend URL<input type="text" id="cfg-url" placeholder="https://your-site.netlify.app/.netlify/functions"></label>
+      <label class="span-2">Backend URL<input type="text" id="cfg-url" placeholder="https://nexora-stay.pages.dev"></label>
       <label class="span-2">Sync key<input type="password" id="cfg-key" placeholder="the SYNC_KEY set on the backend"></label>
     </div>
     <div style="margin-top:14px;"><button class="btn-accent" id="btn-connect">Connect</button></div>
@@ -203,27 +203,18 @@ function getRangeUTC(period, anchorDateStr) {
   return { from: startLocal.toISOString(), to: endLocalExclusive.toISOString(), fromLocal: localDateStr(startLocal), toLocal: localDateStr(new Date(endLocalExclusive.getTime() - 86400000)) };
 }
 
-/* Turns whatever was pasted into the Backend URL box into the address that works.
-   The most common mix-up is pasting the Netlify DASHBOARD link (app.netlify.com/projects/<site>/…). */
+/* Normalizes the Cloudflare Pages backend base URL. */
 function normalizeBackendUrl(raw) {
   var text = String(raw || '').trim();
   if (!text) return { url: '' };
   if (!/^https?:\/\//i.test(text)) text = 'https://' + text;
   var u;
   try { u = new URL(text); } catch (e) { return { url: text }; }
-  if (u.hostname === 'app.netlify.com') {
-    var m = u.pathname.match(/\/(?:projects|sites)\/([^\/]+)/);
-    if (m) return { url: 'https://' + m[1] + '.netlify.app/.netlify/functions', corrected: true };
-    return { url: text };
-  }
+  if (u.hostname === 'app.netlify.com') return { url: text };
   var path = u.pathname.replace(/\/+$/, '');
-  var at = path.indexOf('/.netlify/functions');
-  if (at >= 0) {
-    var base = path.slice(0, at) + '/.netlify/functions';
-    return { url: u.origin + base, corrected: base !== path };
-  }
-  if (path === '') return { url: u.origin + '/.netlify/functions', corrected: true };
-  return { url: u.origin + path };
+  path = path.replace(/\/(?:sync|push|report)$/i, '');
+  path = path.replace(/\/\.netlify\/functions$/i, '');
+  return { url: u.origin + path, corrected: path !== u.pathname.replace(/\/+$/, '') };
 }
 
 function getConfig() {
